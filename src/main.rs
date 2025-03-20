@@ -7,10 +7,26 @@ use yatzy::{solver, Combo, Game};
 fn main() {
     let mut rng = rand::rng();
 
-    let mut game = Game::new(&mut rng);
-
+    let mut game = Game::new_random(&mut rng);
+    game.select_combo(Combo::Ones, &mut rng).unwrap();
+    game.select_combo(Combo::Twos, &mut rng).unwrap();
+    game.select_combo(Combo::Threes, &mut rng).unwrap();
+    game.select_combo(Combo::Fours, &mut rng).unwrap();
+    game.select_combo(Combo::Fives, &mut rng).unwrap();
+    game.select_combo(Combo::Sixes, &mut rng).unwrap();
+    game.select_combo(Combo::OnePair, &mut rng).unwrap();
+    game.select_combo(Combo::TwoPairs, &mut rng).unwrap();
+    game.select_combo(Combo::ThreeOfAKind, &mut rng).unwrap();
+    game.select_combo(Combo::FourOfAKind, &mut rng).unwrap();
+    game.select_combo(Combo::FullHouse, &mut rng).unwrap();
+    game.select_combo(Combo::Yatzy, &mut rng).unwrap();
+    game.select_combo(Combo::Chance, &mut rng).unwrap();
+    print_game(&game);
+    println!("best choice?");
+    println!("{:?}", solver::v2::best_choice(game));
+/*
     while !game.ended() {
-        print_game(&game);
+        //print_game(&game);
 
         match game.rerolls_left() {
             0 => {
@@ -79,13 +95,14 @@ fn main() {
     }
 
     print_game(&game);
+*/
 }
 
 fn play_game() {
     let mut rng = rand::rng();
     let mut stdin_lines = std::io::stdin().lines();
     let mut stdout = std::io::stdout();
-    let mut game = Game::new(&mut rng);
+    let mut game = Game::new_random(&mut rng);
 
     loop {
         print_game(&game);

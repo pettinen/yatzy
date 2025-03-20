@@ -29,10 +29,14 @@ pub enum DiceReplaceError {
 }
 
 impl Dice {
-    pub fn new<R: Rng>(rng: &mut R) -> Self {
+    pub fn new_random<R: Rng>(rng: &mut R) -> Self {
         let mut array = [(); 5].map(|_| DISTRIBUTION.sample(rng));
-        array.sort();
+        array.sort_unstable();
         Self { array }
+    }
+
+    pub fn new_raw(dice: [Die; 5]) -> Self {
+        Self { array: dice }
     }
 
     pub fn replace(&mut self, old: &[Die], new: &[Die]) -> Result<(), DiceReplaceError> {
@@ -52,7 +56,7 @@ impl Dice {
                 i += 1;
             }
         }
-        new_dice.sort();
+        new_dice.sort_unstable();
         self.array = new_dice;
         Ok(())
     }
@@ -71,14 +75,14 @@ impl Dice {
                 *die = DISTRIBUTION.sample(rng);
             }
         }
-        new_dice.sort();
+        new_dice.sort_unstable();
         self.array = new_dice;
         Ok(())
     }
 
     pub fn reroll_all<R: Rng>(&mut self, rng: &mut R) {
         let mut array = [(); 5].map(|_| DISTRIBUTION.sample(rng));
-        array.sort();
+        array.sort_unstable();
         self.array = array;
     }
 }
@@ -298,9 +302,9 @@ impl Game {
             && self.yatzy.is_some()
     }
 
-    pub fn new<R: Rng>(rng: &mut R) -> Self {
+    pub fn new_random<R: Rng>(rng: &mut R) -> Self {
         Self {
-            dice: Dice::new(rng),
+            dice: Dice::new_random(rng),
             rerolls_left: 2,
             ones: None,
             twos: None,
@@ -318,6 +322,50 @@ impl Game {
             chance: None,
             yatzy: None,
         }
+    }
+
+    pub fn new_raw(
+        dice: Dice,
+        rerolls_left: u8,
+        ones: Option<u8>,
+        twos: Option<u8>,
+        threes: Option<u8>,
+        fours: Option<u8>,
+        fives: Option<u8>,
+        sixes: Option<u8>,
+        one_pair: Option<u8>,
+        two_pairs: Option<u8>,
+        three_of_a_kind: Option<u8>,
+        four_of_a_kind: Option<u8>,
+        small_straight: Option<u8>,
+        large_straight: Option<u8>,
+        full_house: Option<u8>,
+        chance: Option<u8>,
+        yatzy: Option<u8>,
+    ) -> Self {
+        Self {
+            dice,
+            rerolls_left,
+            ones,
+            twos,
+            threes,
+            fours,
+            fives,
+            sixes,
+            one_pair,
+            two_pairs,
+            three_of_a_kind,
+            four_of_a_kind,
+            small_straight,
+            large_straight,
+            full_house,
+            chance,
+            yatzy,
+        }
+    }
+
+    pub fn replace_dice(&mut self, old: &[Die], new: &[Die]) -> Result<(), DiceReplaceError> {
+        self.dice.replace(old, new)
     }
 
     pub fn reroll<R: Rng>(&mut self, dice: &[Die], rng: &mut R) -> Result<(), RerollError> {
@@ -407,10 +455,39 @@ impl Game {
             return Err(SelectComboError::ComboAlreadyFilled);
         }
         combo_ref.replace(combo.points(self.dice));
-        if !self.ended() {
+        if self.ended() {
+            self.rerolls_left = 0;
+        } else {
             self.dice.reroll_all(rng);
             self.rerolls_left = 2;
         }
         Ok(())
+    }
+
+    pub fn set_combo(&mut self, combo: Combo) {
+        let combo_ref = match combo {
+            Combo::Ones => &mut self.ones,
+            Combo::Twos => &mut self.twos,
+            Combo::Threes => &mut self.threes,
+            Combo::Fours => &mut self.fours,
+            Combo::Fives => &mut self.fives,
+            Combo::Sixes => &mut self.sixes,
+            Combo::OnePair => &mut self.one_pair,
+            Combo::TwoPairs => &mut self.two_pairs,
+            Combo::ThreeOfAKind => &mut self.three_of_a_kind,
+            Combo::FourOfAKind => &mut self.four_of_a_kind,
+            Combo::SmallStraight => &mut self.small_straight,
+            Combo::LargeStraight => &mut self.large_straight,
+            Combo::FullHouse => &mut self.full_house,
+            Combo::Chance => &mut self.chance,
+            Combo::Yatzy => &mut self.yatzy,
+        };
+        assert!(combo_ref.is_none());
+        combo_ref.replace(combo.points(self.dice));
+    }
+
+    pub fn set_rerolls(&mut self, rerolls_left: u8) {
+        assert!(rerolls_left <= 2);
+        self.rerolls_left = rerolls_left;
     }
 }
