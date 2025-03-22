@@ -1,0 +1,16 @@
+[package]
+name = "yatzy-compute-expected-values"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+chrono = "0.4.40"
+itertools = "0.14.0"
+lazy_static = "1.5.0"
+num-bigint = { version = "0.4.6", features = ["serde"] }
+num-rational = { version = "0.4.2", features = ["serde"] }
+papaya = "0.2.1"
+postcard = { version = "1.1.1", features = ["alloc"] }
+rayon = "1.10.0"
+serde = { version = "1.0.219", features = ["derive"] }
+yatzy = { workspace = true }

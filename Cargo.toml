@@ -1,15 +1,8 @@
-[package]
-name = "yatzy"
-version = "0.1.0"
-edition = "2021"
+[workspace]
+members = ["yatzy", "yatzy-compute-expected-values", "yatzy-solver"]
+resolver = "3"
 
-[dependencies]
-itertools = "0.14.0"
-lazy_static = "1.5.0"
-num-rational = "0.4.2"
-rand = "0.9.0"
-rayon = "1.10.0"
-thiserror = "2.0.11"
-
-[profile.release]
-debug = true
+[workspace.dependencies]
+yatzy = { path = "yatzy" }
+yatzy-compute-expected-values = { path = "yatzy-compute-expected-values" }
+yatzy-solver = { path = "yatzy-solver" }

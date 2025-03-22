@@ -1,0 +1,13 @@
+[package]
+name = "yatzy-solver"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+itertools = "0.14.0"
+lazy_static = "1.5.0"
+postcard = "1.1.1"
+rand = "0.9.0"
+rayon = "1.10.0"
+yatzy = { workspace = true }
+yatzy-compute-expected-values = { workspace = true }

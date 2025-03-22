@@ -5,11 +5,11 @@ use std::{
 
 use lazy_static::lazy_static;
 use rand::{
-    distr::{Distribution as _, Uniform},
     Rng,
+    distr::{Distribution as _, Uniform},
 };
 
-pub mod solver;
+//pub mod solver;
 
 pub type Die = u8;
 
@@ -40,7 +40,10 @@ impl Dice {
     }
 
     pub fn replace(&mut self, old: &[Die], new: &[Die]) -> Result<(), DiceReplaceError> {
-        assert!(old.len() == new.len(), "`old` and `new` must be of equal lengths");
+        assert!(
+            old.len() == new.len(),
+            "`old` and `new` must be of equal lengths"
+        );
         let mut new_dice = self.array.clone();
         for die in old {
             if let Some(index) = new_dice.iter().position(|x| x == die) {
@@ -121,6 +124,10 @@ pub enum Combo {
 }
 
 impl Combo {
+    pub fn iter() -> ComboIterator {
+        ComboIterator { current: None }
+    }
+
     pub fn points(&self, dice: Dice) -> u8 {
         match self {
             Self::Ones => dice.iter().filter(|&&x| x == 1).count() as u8,
@@ -220,6 +227,40 @@ impl Combo {
     }
 }
 
+#[derive(Copy, Clone, Debug)]
+pub struct ComboIterator {
+    current: Option<Combo>,
+}
+
+impl Iterator for ComboIterator {
+    type Item = Combo;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let next = match self.current {
+            None => Some(Combo::Ones),
+            Some(Combo::Ones) => Some(Combo::Twos),
+            Some(Combo::Twos) => Some(Combo::Threes),
+            Some(Combo::Threes) => Some(Combo::Fours),
+            Some(Combo::Fours) => Some(Combo::Fives),
+            Some(Combo::Fives) => Some(Combo::Sixes),
+            Some(Combo::Sixes) => Some(Combo::OnePair),
+            Some(Combo::OnePair) => Some(Combo::TwoPairs),
+            Some(Combo::TwoPairs) => Some(Combo::ThreeOfAKind),
+            Some(Combo::ThreeOfAKind) => Some(Combo::FourOfAKind),
+            Some(Combo::FourOfAKind) => Some(Combo::SmallStraight),
+            Some(Combo::SmallStraight) => Some(Combo::LargeStraight),
+            Some(Combo::LargeStraight) => Some(Combo::FullHouse),
+            Some(Combo::FullHouse) => Some(Combo::Chance),
+            Some(Combo::Chance) => Some(Combo::Yatzy),
+            Some(Combo::Yatzy) => None,
+        };
+        if next.is_some() {
+            self.current = next;
+        }
+        next
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct Game {
     dice: Dice,
@@ -300,6 +341,16 @@ impl Game {
             && self.full_house.is_some()
             && self.chance.is_some()
             && self.yatzy.is_some()
+    }
+
+    pub fn has_bonus(&self) -> bool {
+        self.ones.unwrap_or(0)
+            + self.twos.unwrap_or(0)
+            + self.threes.unwrap_or(0)
+            + self.fours.unwrap_or(0)
+            + self.fives.unwrap_or(0)
+            + self.sixes.unwrap_or(0)
+            >= 63
     }
 
     pub fn new_random<R: Rng>(rng: &mut R) -> Self {
@@ -412,8 +463,7 @@ impl Game {
             0
         };
 
-        ones
-            + twos
+        ones + twos
             + threes
             + fours
             + fives
@@ -430,7 +480,11 @@ impl Game {
             + yatzy
     }
 
-    pub fn select_combo<R: Rng>(&mut self, combo: Combo, rng: &mut R) -> Result<(), SelectComboError> {
+    pub fn select_combo<R: Rng>(
+        &mut self,
+        combo: Combo,
+        rng: &mut R,
+    ) -> Result<(), SelectComboError> {
         if self.ended() {
             return Err(SelectComboError::GameEnded);
         }
@@ -464,7 +518,7 @@ impl Game {
         Ok(())
     }
 
-    pub fn set_combo(&mut self, combo: Combo) {
+    pub fn set_combo_raw(&mut self, combo: Combo, points: Option<u8>) {
         let combo_ref = match combo {
             Combo::Ones => &mut self.ones,
             Combo::Twos => &mut self.twos,
@@ -482,12 +536,92 @@ impl Game {
             Combo::Chance => &mut self.chance,
             Combo::Yatzy => &mut self.yatzy,
         };
-        assert!(combo_ref.is_none());
-        combo_ref.replace(combo.points(self.dice));
+        match points {
+            Some(n) => {
+                combo_ref.replace(n);
+            }
+            None => {
+                combo_ref.take();
+            }
+        }
     }
 
     pub fn set_rerolls(&mut self, rerolls_left: u8) {
         assert!(rerolls_left <= 2);
         self.rerolls_left = rerolls_left;
     }
+}
+
+fn print_score(name: &'static str, score: Option<u8>) {
+    match score {
+        Some(score) => {
+            print_score_str(name, &score.to_string());
+        }
+        None => {
+            println!("{name}");
+        }
+    }
+}
+
+fn print_score_str(name: &'static str, score: &str) {
+    let mut line = String::from(name);
+    for _ in 0..20 - name.len() - score.len() {
+        line.push(' ');
+    }
+    line.push_str(score);
+    println!("{line}");
+}
+
+pub fn print_game(game: Game) {
+    let ones = game.combo(Combo::Ones);
+    let twos = game.combo(Combo::Twos);
+    let threes = game.combo(Combo::Threes);
+    let fours = game.combo(Combo::Fours);
+    let fives = game.combo(Combo::Fives);
+    let sixes = game.combo(Combo::Sixes);
+
+    print_score("Ones", ones);
+    print_score("Twos", twos);
+    print_score("Threes", threes);
+    print_score("Fours", fours);
+    print_score("Fives", fives);
+    print_score("Sixes", sixes);
+
+    let bonus = if ones.unwrap_or(0)
+        + twos.unwrap_or(0)
+        + threes.unwrap_or(0)
+        + fours.unwrap_or(0)
+        + fives.unwrap_or(0)
+        + sixes.unwrap_or(0)
+        >= 63
+    {
+        Some(50)
+    } else {
+        None
+    };
+    print_score("Bonus", bonus);
+
+    print_score("One pair", game.combo(Combo::OnePair));
+    print_score("Two pairs", game.combo(Combo::TwoPairs));
+    print_score("Three of a kind", game.combo(Combo::ThreeOfAKind));
+    print_score("Four of a kind", game.combo(Combo::FourOfAKind));
+    print_score("Small straight", game.combo(Combo::SmallStraight));
+    print_score("Large straight", game.combo(Combo::LargeStraight));
+    print_score("Full house", game.combo(Combo::FullHouse));
+    print_score("Chance", game.combo(Combo::Chance));
+    print_score("Yatzy", game.combo(Combo::Yatzy));
+    print_score_str("Total", &game.score().to_string());
+    println!();
+    print!("Dice:");
+    for die in *game.dice() {
+        print!(" {die}");
+    }
+    println!();
+    let rerolls_left = game.rerolls_left();
+    if rerolls_left == 1 {
+        println!("1 reroll left");
+    } else {
+        println!("{rerolls_left} rerolls left");
+    }
+    println!();
 }

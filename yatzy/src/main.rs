@@ -2,31 +2,17 @@
 
 use std::io::Write as _;
 
-use yatzy::{solver, Combo, Game};
+use yatzy::{Combo, Game, print_game};
 
 fn main() {
+    play_game();
+    /*
     let mut rng = rand::rng();
 
     let mut game = Game::new_random(&mut rng);
-    game.select_combo(Combo::Ones, &mut rng).unwrap();
-    game.select_combo(Combo::Twos, &mut rng).unwrap();
-    game.select_combo(Combo::Threes, &mut rng).unwrap();
-    game.select_combo(Combo::Fours, &mut rng).unwrap();
-    game.select_combo(Combo::Fives, &mut rng).unwrap();
-    game.select_combo(Combo::Sixes, &mut rng).unwrap();
-    game.select_combo(Combo::OnePair, &mut rng).unwrap();
-    game.select_combo(Combo::TwoPairs, &mut rng).unwrap();
-    game.select_combo(Combo::ThreeOfAKind, &mut rng).unwrap();
-    game.select_combo(Combo::FourOfAKind, &mut rng).unwrap();
-    game.select_combo(Combo::FullHouse, &mut rng).unwrap();
-    game.select_combo(Combo::Yatzy, &mut rng).unwrap();
-    game.select_combo(Combo::Chance, &mut rng).unwrap();
-    print_game(&game);
-    println!("best choice?");
-    println!("{:?}", solver::v2::best_choice(game));
-/*
+
     while !game.ended() {
-        //print_game(&game);
+        print_game(game);
 
         match game.rerolls_left() {
             0 => {
@@ -94,8 +80,8 @@ fn main() {
         }
     }
 
-    print_game(&game);
-*/
+    print_game(game);
+    */
 }
 
 fn play_game() {
@@ -105,7 +91,7 @@ fn play_game() {
     let mut game = Game::new_random(&mut rng);
 
     loop {
-        print_game(&game);
+        print_game(game);
 
         print!("Your action: ");
         if let Err(error) = stdout.flush() {
@@ -196,82 +182,8 @@ fn play_game() {
         }
 
         if game.ended() {
-            print_game(&game);
+            print_game(game);
             break;
         }
     }
-}
-
-fn print_score(name: &'static str, score: Option<u8>) {
-    match score {
-        Some(score) => {
-            print_score_str(name, &score.to_string());
-        }
-        None => {
-            println!("{name}");
-        }
-    }
-}
-
-fn print_score_str(name: &'static str, score: &str) {
-    let mut line = String::from(name);
-    for _ in 0..20 - name.len() - score.len() {
-        line.push(' ');
-    }
-    line.push_str(score);
-    println!("{line}");
-}
-
-fn print_game(game: &Game) {
-    let ones = game.combo(Combo::Ones);
-    let twos = game.combo(Combo::Twos);
-    let threes = game.combo(Combo::Threes);
-    let fours = game.combo(Combo::Fours);
-    let fives = game.combo(Combo::Fives);
-    let sixes = game.combo(Combo::Sixes);
-
-    print_score("Ones", ones);
-    print_score("Twos", twos);
-    print_score("Threes", threes);
-    print_score("Fours", fours);
-    print_score("Fives", fives);
-    print_score("Sixes", sixes);
-
-    let bonus = if ones.unwrap_or(0)
-        + twos.unwrap_or(0)
-        + threes.unwrap_or(0)
-        + fours.unwrap_or(0)
-        + fives.unwrap_or(0)
-        + sixes.unwrap_or(0)
-        >= 63
-    {
-        Some(50)
-    } else {
-        None
-    };
-    print_score("Bonus", bonus);
-
-    print_score("One pair", game.combo(Combo::OnePair));
-    print_score("Two pairs", game.combo(Combo::TwoPairs));
-    print_score("Three of a kind", game.combo(Combo::ThreeOfAKind));
-    print_score("Four of a kind", game.combo(Combo::FourOfAKind));
-    print_score("Small straight", game.combo(Combo::SmallStraight));
-    print_score("Large straight", game.combo(Combo::LargeStraight));
-    print_score("Full house", game.combo(Combo::FullHouse));
-    print_score("Chance", game.combo(Combo::Chance));
-    print_score("Yatzy", game.combo(Combo::Yatzy));
-    print_score_str("Total", &game.score().to_string());
-    println!();
-    print!("Dice:");
-    for die in *game.dice() {
-        print!(" {die}");
-    }
-    println!();
-    let rerolls_left = game.rerolls_left();
-    if rerolls_left == 1 {
-        println!("1 reroll left");
-    } else {
-        println!("{rerolls_left} rerolls left");
-    }
-    println!();
 }
