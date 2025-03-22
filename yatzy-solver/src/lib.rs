@@ -1,19 +1,53 @@
 use std::collections::{HashMap, HashSet};
 
 use itertools::Itertools as _;
-use rayon::iter::{IntoParallelIterator as _, ParallelIterator as _};
-use yatzy::{Combo, Game};
-use yatzy_compute_expected_values::{Choice, GameState, float::prob, state_from_game};
+use lazy_static::lazy_static;
+use num_bigint::BigUint;
+use num_rational::Ratio;
+use rayon::iter::{IntoParallelRefIterator as _, ParallelIterator as _};
+use yatzy::{Combo, Die, Game};
+use yatzy_compute_expected_values::{Choice, GameState, rational::prob, state_from_game};
 
-fn expected_score(game: Game, expected_values: &HashMap<GameState, f64>) -> f64 {
+fn convert_prob(ratio: Ratio<u16>) -> Ratio<BigUint> {
+    let (numer, denom) = ratio.into_raw();
+    Ratio::new(numer.into(), denom.into())
+}
+
+lazy_static! {
+    static ref ROLL_1_PROB: Vec<([Die; 1], Ratio<BigUint>)> = prob::ROLL_1_PROB
+        .into_iter()
+        .map(|(dice, prob)| (dice, convert_prob(prob)))
+        .collect();
+    static ref ROLL_2_PROB: Vec<([Die; 2], Ratio<BigUint>)> = prob::ROLL_2_PROB
+        .into_iter()
+        .map(|(dice, prob)| (dice, convert_prob(prob)))
+        .collect();
+    static ref ROLL_3_PROB: Vec<([Die; 3], Ratio<BigUint>)> = prob::ROLL_3_PROB
+        .into_iter()
+        .map(|(dice, prob)| (dice, convert_prob(prob)))
+        .collect();
+    static ref ROLL_4_PROB: Vec<([Die; 4], Ratio<BigUint>)> = prob::ROLL_4_PROB
+        .into_iter()
+        .map(|(dice, prob)| (dice, convert_prob(prob)))
+        .collect();
+    static ref ROLL_5_PROB: Vec<([Die; 5], Ratio<BigUint>)> = prob::ROLL_5_PROB
+        .into_iter()
+        .map(|(dice, prob)| (dice, convert_prob(prob)))
+        .collect();
+}
+
+fn expected_score(
+    game: Game,
+    expected_values: &HashMap<GameState, Ratio<BigUint>>,
+) -> Ratio<BigUint> {
     if game.ended() {
-        game.score().into()
+        Ratio::from(BigUint::from(game.score()))
     } else {
         let state = state_from_game(game);
 
-        let mut value = *expected_values.get(&state).unwrap();
+        let mut value = expected_values.get(&state).unwrap().clone();
         for combo in Combo::iter() {
-            value += f64::from(game.combo(combo).unwrap_or(0));
+            value += Ratio::from(BigUint::from(game.combo(combo).unwrap_or(0)));
         }
         value
     }
@@ -21,10 +55,10 @@ fn expected_score(game: Game, expected_values: &HashMap<GameState, f64>) -> f64 
 
 pub fn best_choice_0_rerolls(
     game: Game,
-    expected_values: &HashMap<GameState, f64>,
-) -> (Choice, f64) {
+    expected_values: &HashMap<GameState, Ratio<BigUint>>,
+) -> (Choice, Ratio<BigUint>) {
     let mut best_choice = None;
-    let mut max_expected_value = 0_f64;
+    let mut max_expected_value = Ratio::from(BigUint::from(0_u8));
 
     for combo in Combo::iter() {
         if game.combo(combo).is_some() {
@@ -45,8 +79,8 @@ pub fn best_choice_0_rerolls(
 
 pub fn best_choice_1_reroll(
     game: Game,
-    expected_values: &HashMap<GameState, f64>,
-) -> (Choice, f64) {
+    expected_values: &HashMap<GameState, Ratio<BigUint>>,
+) -> (Choice, Ratio<BigUint>) {
     let mut choices = HashSet::new();
 
     for combo in Combo::iter() {
@@ -71,7 +105,7 @@ pub fn best_choice_1_reroll(
     }
 
     let mut best_choice = None;
-    let mut max_expected_value = 0_f64;
+    let mut max_expected_value = Ratio::from(BigUint::from(0_u8));
 
     for choice in choices {
         let value = match choice {
@@ -80,51 +114,51 @@ pub fn best_choice_1_reroll(
                 game.set_combo_raw(combo, Some(combo.points(game.dice())));
                 expected_score(game, expected_values)
             }
-            Choice::Reroll1(dice) => prob::ROLL_1_PROB
-                .into_par_iter()
+            Choice::Reroll1(dice) => ROLL_1_PROB
+                .par_iter()
                 .map(|(new_dice, prob)| {
                     let mut game = game.clone();
-                    game.replace_dice(&dice, &new_dice).unwrap();
+                    game.replace_dice(&dice, new_dice).unwrap();
                     game.set_rerolls(0);
                     let (_, value) = best_choice_0_rerolls(game, expected_values);
                     prob * value
                 })
                 .sum(),
-            Choice::Reroll2(dice) => prob::ROLL_2_PROB
-                .into_par_iter()
+            Choice::Reroll2(dice) => ROLL_2_PROB
+                .par_iter()
                 .map(|(new_dice, prob)| {
                     let mut game = game.clone();
-                    game.replace_dice(&dice, &new_dice).unwrap();
+                    game.replace_dice(&dice, new_dice).unwrap();
                     game.set_rerolls(0);
                     let (_, value) = best_choice_0_rerolls(game, expected_values);
                     prob * value
                 })
                 .sum(),
-            Choice::Reroll3(dice) => prob::ROLL_3_PROB
-                .into_par_iter()
+            Choice::Reroll3(dice) => ROLL_3_PROB
+                .par_iter()
                 .map(|(new_dice, prob)| {
                     let mut game = game.clone();
-                    game.replace_dice(&dice, &new_dice).unwrap();
+                    game.replace_dice(&dice, new_dice).unwrap();
                     game.set_rerolls(0);
                     let (_, value) = best_choice_0_rerolls(game, expected_values);
                     prob * value
                 })
                 .sum(),
-            Choice::Reroll4(dice) => prob::ROLL_4_PROB
-                .into_par_iter()
+            Choice::Reroll4(dice) => ROLL_4_PROB
+                .par_iter()
                 .map(|(new_dice, prob)| {
                     let mut game = game.clone();
-                    game.replace_dice(&dice, &new_dice).unwrap();
+                    game.replace_dice(&dice, new_dice).unwrap();
                     game.set_rerolls(0);
                     let (_, value) = best_choice_0_rerolls(game, expected_values);
                     prob * value
                 })
                 .sum(),
-            Choice::Reroll5(dice) => prob::ROLL_5_PROB
-                .into_par_iter()
+            Choice::Reroll5(dice) => ROLL_5_PROB
+                .par_iter()
                 .map(|(new_dice, prob)| {
                     let mut game = game.clone();
-                    game.replace_dice(&dice, &new_dice).unwrap();
+                    game.replace_dice(&dice, new_dice).unwrap();
                     game.set_rerolls(0);
                     let (_, value) = best_choice_0_rerolls(game, expected_values);
                     prob * value
@@ -143,8 +177,8 @@ pub fn best_choice_1_reroll(
 
 pub fn best_choice_2_rerolls(
     game: Game,
-    expected_values: &HashMap<GameState, f64>,
-) -> (Choice, f64) {
+    expected_values: &HashMap<GameState, Ratio<BigUint>>,
+) -> (Choice, Ratio<BigUint>) {
     let mut choices = HashSet::new();
 
     for combo in Combo::iter() {
@@ -169,7 +203,7 @@ pub fn best_choice_2_rerolls(
     }
 
     let mut best_choice = None;
-    let mut max_expected_value = 0_f64;
+    let mut max_expected_value = Ratio::from(BigUint::from(0_u8));
 
     for choice in choices {
         let value = match choice {
@@ -178,51 +212,51 @@ pub fn best_choice_2_rerolls(
                 game.set_combo_raw(combo, Some(combo.points(game.dice())));
                 expected_score(game, expected_values)
             }
-            Choice::Reroll1(dice) => prob::ROLL_1_PROB
-                .into_par_iter()
+            Choice::Reroll1(dice) => ROLL_1_PROB
+                .par_iter()
                 .map(|(new_dice, prob)| {
                     let mut game = game.clone();
-                    game.replace_dice(&dice, &new_dice).unwrap();
+                    game.replace_dice(&dice, new_dice).unwrap();
                     game.set_rerolls(0);
                     let (_, value) = best_choice_1_reroll(game, expected_values);
                     prob * value
                 })
                 .sum(),
-            Choice::Reroll2(dice) => prob::ROLL_2_PROB
-                .into_par_iter()
+            Choice::Reroll2(dice) => ROLL_2_PROB
+                .par_iter()
                 .map(|(new_dice, prob)| {
                     let mut game = game.clone();
-                    game.replace_dice(&dice, &new_dice).unwrap();
+                    game.replace_dice(&dice, new_dice).unwrap();
                     game.set_rerolls(0);
                     let (_, value) = best_choice_1_reroll(game, expected_values);
                     prob * value
                 })
                 .sum(),
-            Choice::Reroll3(dice) => prob::ROLL_3_PROB
-                .into_par_iter()
+            Choice::Reroll3(dice) => ROLL_3_PROB
+                .par_iter()
                 .map(|(new_dice, prob)| {
                     let mut game = game.clone();
-                    game.replace_dice(&dice, &new_dice).unwrap();
+                    game.replace_dice(&dice, new_dice).unwrap();
                     game.set_rerolls(0);
                     let (_, value) = best_choice_1_reroll(game, expected_values);
                     prob * value
                 })
                 .sum(),
-            Choice::Reroll4(dice) => prob::ROLL_4_PROB
-                .into_par_iter()
+            Choice::Reroll4(dice) => ROLL_4_PROB
+                .par_iter()
                 .map(|(new_dice, prob)| {
                     let mut game = game.clone();
-                    game.replace_dice(&dice, &new_dice).unwrap();
+                    game.replace_dice(&dice, new_dice).unwrap();
                     game.set_rerolls(0);
                     let (_, value) = best_choice_1_reroll(game, expected_values);
                     prob * value
                 })
                 .sum(),
-            Choice::Reroll5(dice) => prob::ROLL_5_PROB
-                .into_par_iter()
+            Choice::Reroll5(dice) => ROLL_5_PROB
+                .par_iter()
                 .map(|(new_dice, prob)| {
                     let mut game = game.clone();
-                    game.replace_dice(&dice, &new_dice).unwrap();
+                    game.replace_dice(&dice, new_dice).unwrap();
                     game.set_rerolls(0);
                     let (_, value) = best_choice_1_reroll(game, expected_values);
                     prob * value

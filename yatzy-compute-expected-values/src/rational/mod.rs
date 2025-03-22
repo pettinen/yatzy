@@ -4,8 +4,8 @@ use itertools::Itertools as _;
 use lazy_static::lazy_static;
 use num_bigint::BigUint;
 use num_rational::Ratio;
-use rayon::iter::{IntoParallelIterator as _, ParallelIterator as _};
-use yatzy::{Combo, Game};
+use rayon::iter::{IntoParallelRefIterator as _, ParallelIterator as _};
+use yatzy::{Combo, Die, Game};
 
 use crate::{Choice, GameState, state_from_game};
 
@@ -13,13 +13,33 @@ pub mod prob;
 
 type ExpectedValue = Ratio<BigUint>;
 
-lazy_static! {
-    static ref CACHE: papaya::HashMap<Game, ExpectedValue> = papaya::HashMap::new();
-}
-
 fn convert_prob(ratio: Ratio<u16>) -> ExpectedValue {
     let (numer, denom) = ratio.into_raw();
     ExpectedValue::new(numer.into(), denom.into())
+}
+
+lazy_static! {
+    static ref CACHE: papaya::HashMap<Game, ExpectedValue> = papaya::HashMap::new();
+    static ref ROLL_1_PROB: Vec<([Die; 1], ExpectedValue)> = prob::ROLL_1_PROB
+        .into_iter()
+        .map(|(dice, prob)| (dice, convert_prob(prob)))
+        .collect();
+    static ref ROLL_2_PROB: Vec<([Die; 2], ExpectedValue)> = prob::ROLL_2_PROB
+        .into_iter()
+        .map(|(dice, prob)| (dice, convert_prob(prob)))
+        .collect();
+    static ref ROLL_3_PROB: Vec<([Die; 3], ExpectedValue)> = prob::ROLL_3_PROB
+        .into_iter()
+        .map(|(dice, prob)| (dice, convert_prob(prob)))
+        .collect();
+    static ref ROLL_4_PROB: Vec<([Die; 4], ExpectedValue)> = prob::ROLL_4_PROB
+        .into_iter()
+        .map(|(dice, prob)| (dice, convert_prob(prob)))
+        .collect();
+    static ref ROLL_5_PROB: Vec<([Die; 5], ExpectedValue)> = prob::ROLL_5_PROB
+        .into_iter()
+        .map(|(dice, prob)| (dice, convert_prob(prob)))
+        .collect();
 }
 
 fn expected_value_0_rerolls(
@@ -85,7 +105,6 @@ fn expected_value_1_reroll(
         let value = match choice {
             Choice::SelectCombo(combo) => {
                 let mut game = game.clone();
-                // TODO set combo to actual points so that has_bonus computes properly
                 let combo_points = combo.points(game.dice());
                 game.set_combo_raw(combo, Some(combo_points));
                 ExpectedValue::from(BigUint::from(combo_points))
@@ -98,64 +117,59 @@ fn expected_value_1_reroll(
                         expected_values.get(&state).unwrap().clone()
                     }
             }
-            Choice::Reroll1(dice) => prob::ROLL_1_PROB
-                .into_par_iter()
+            Choice::Reroll1(dice) => ROLL_1_PROB
+                .par_iter()
                 .map(|(new_dice, prob)| {
                     let mut game = game.clone();
-                    _ = game.replace_dice(&dice, &new_dice);
+                    _ = game.replace_dice(&dice, new_dice);
                     game.set_rerolls(0);
-                    convert_prob(prob)
-                        * CACHE.pin().get_or_insert_with(game, || {
-                            expected_value_0_rerolls(game, expected_values)
-                        })
+                    prob * CACHE.pin().get_or_insert_with(game, || {
+                        expected_value_0_rerolls(game, expected_values)
+                    })
                 })
                 .sum(),
-            Choice::Reroll2(dice) => prob::ROLL_2_PROB
-                .into_par_iter()
+            Choice::Reroll2(dice) => ROLL_2_PROB
+                .par_iter()
                 .map(|(new_dice, prob)| {
                     let mut game = game.clone();
-                    _ = game.replace_dice(&dice, &new_dice);
+                    _ = game.replace_dice(&dice, new_dice);
                     game.set_rerolls(0);
-                    convert_prob(prob)
-                        * CACHE.pin().get_or_insert_with(game, || {
-                            expected_value_0_rerolls(game, expected_values)
-                        })
+                    prob * CACHE.pin().get_or_insert_with(game, || {
+                        expected_value_0_rerolls(game, expected_values)
+                    })
                 })
                 .sum(),
-            Choice::Reroll3(dice) => prob::ROLL_3_PROB
-                .into_par_iter()
+            Choice::Reroll3(dice) => ROLL_3_PROB
+                .par_iter()
                 .map(|(new_dice, prob)| {
                     let mut game = game.clone();
-                    _ = game.replace_dice(&dice, &new_dice);
+                    _ = game.replace_dice(&dice, new_dice);
                     game.set_rerolls(0);
-                    convert_prob(prob)
-                        * CACHE.pin().get_or_insert_with(game, || {
-                            expected_value_0_rerolls(game, expected_values)
-                        })
+                    prob * CACHE.pin().get_or_insert_with(game, || {
+                        expected_value_0_rerolls(game, expected_values)
+                    })
                 })
                 .sum(),
-            Choice::Reroll4(dice) => prob::ROLL_4_PROB
-                .into_par_iter()
+            Choice::Reroll4(dice) => ROLL_4_PROB
+                .par_iter()
                 .map(|(new_dice, prob)| {
                     let mut game = game.clone();
-                    _ = game.replace_dice(&dice, &new_dice);
+                    _ = game.replace_dice(&dice, new_dice);
                     game.set_rerolls(0);
-                    convert_prob(prob)
-                        * CACHE.pin().get_or_insert_with(game, || {
-                            expected_value_0_rerolls(game, expected_values)
-                        })
+                    prob * CACHE.pin().get_or_insert_with(game, || {
+                        expected_value_0_rerolls(game, expected_values)
+                    })
                 })
                 .sum(),
-            Choice::Reroll5(dice) => prob::ROLL_5_PROB
-                .into_par_iter()
+            Choice::Reroll5(dice) => ROLL_5_PROB
+                .par_iter()
                 .map(|(new_dice, prob)| {
                     let mut game = game.clone();
-                    _ = game.replace_dice(&dice, &new_dice);
+                    _ = game.replace_dice(&dice, new_dice);
                     game.set_rerolls(0);
-                    convert_prob(prob)
-                        * CACHE.pin().get_or_insert_with(game, || {
-                            expected_value_0_rerolls(game, expected_values)
-                        })
+                    prob * CACHE.pin().get_or_insert_with(game, || {
+                        expected_value_0_rerolls(game, expected_values)
+                    })
                 })
                 .sum(),
         };
@@ -212,64 +226,59 @@ pub fn expected_value_2_rerolls(
                         expected_values.get(&state).unwrap().clone()
                     }
             }
-            Choice::Reroll1(dice) => prob::ROLL_1_PROB
-                .into_par_iter()
+            Choice::Reroll1(dice) => ROLL_1_PROB
+                .par_iter()
                 .map(|(new_dice, prob)| {
                     let mut game = game.clone();
-                    _ = game.replace_dice(&dice, &new_dice);
+                    _ = game.replace_dice(&dice, new_dice);
                     game.set_rerolls(1);
-                    convert_prob(prob)
-                        * CACHE.pin().get_or_insert_with(game, || {
-                            expected_value_1_reroll(game, expected_values)
-                        })
+                    prob * CACHE
+                        .pin()
+                        .get_or_insert_with(game, || expected_value_1_reroll(game, expected_values))
                 })
                 .sum(),
-            Choice::Reroll2(dice) => prob::ROLL_2_PROB
-                .into_par_iter()
+            Choice::Reroll2(dice) => ROLL_2_PROB
+                .par_iter()
                 .map(|(new_dice, prob)| {
                     let mut game = game.clone();
-                    _ = game.replace_dice(&dice, &new_dice);
+                    _ = game.replace_dice(&dice, new_dice);
                     game.set_rerolls(1);
-                    convert_prob(prob)
-                        * CACHE.pin().get_or_insert_with(game, || {
-                            expected_value_1_reroll(game, expected_values)
-                        })
+                    prob * CACHE
+                        .pin()
+                        .get_or_insert_with(game, || expected_value_1_reroll(game, expected_values))
                 })
                 .sum(),
-            Choice::Reroll3(dice) => prob::ROLL_3_PROB
-                .into_par_iter()
+            Choice::Reroll3(dice) => ROLL_3_PROB
+                .par_iter()
                 .map(|(new_dice, prob)| {
                     let mut game = game.clone();
-                    _ = game.replace_dice(&dice, &new_dice);
+                    _ = game.replace_dice(&dice, new_dice);
                     game.set_rerolls(1);
-                    convert_prob(prob)
-                        * CACHE.pin().get_or_insert_with(game, || {
-                            expected_value_1_reroll(game, expected_values)
-                        })
+                    prob * CACHE
+                        .pin()
+                        .get_or_insert_with(game, || expected_value_1_reroll(game, expected_values))
                 })
                 .sum(),
-            Choice::Reroll4(dice) => prob::ROLL_4_PROB
-                .into_par_iter()
+            Choice::Reroll4(dice) => ROLL_4_PROB
+                .par_iter()
                 .map(|(new_dice, prob)| {
                     let mut game = game.clone();
-                    _ = game.replace_dice(&dice, &new_dice);
+                    _ = game.replace_dice(&dice, new_dice);
                     game.set_rerolls(1);
-                    convert_prob(prob)
-                        * CACHE.pin().get_or_insert_with(game, || {
-                            expected_value_1_reroll(game, expected_values)
-                        })
+                    prob * CACHE
+                        .pin()
+                        .get_or_insert_with(game, || expected_value_1_reroll(game, expected_values))
                 })
                 .sum(),
-            Choice::Reroll5(dice) => prob::ROLL_5_PROB
-                .into_par_iter()
+            Choice::Reroll5(dice) => ROLL_5_PROB
+                .par_iter()
                 .map(|(new_dice, prob)| {
                     let mut game = game.clone();
-                    _ = game.replace_dice(&dice, &new_dice);
+                    _ = game.replace_dice(&dice, new_dice);
                     game.set_rerolls(1);
-                    convert_prob(prob)
-                        * CACHE.pin().get_or_insert_with(game, || {
-                            expected_value_1_reroll(game, expected_values)
-                        })
+                    prob * CACHE
+                        .pin()
+                        .get_or_insert_with(game, || expected_value_1_reroll(game, expected_values))
                 })
                 .sum(),
         };

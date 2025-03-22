@@ -1,15 +1,10 @@
 use std::collections::{HashMap, HashSet};
 
-use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 use yatzy::{Combo, Dice, Die, Game};
 
 pub mod float;
 pub mod rational;
-
-lazy_static! {
-    static ref CACHE: papaya::HashMap<Game, f64> = papaya::HashMap::new();
-}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 enum NumberState {

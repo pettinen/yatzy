@@ -27,9 +27,9 @@ fn main() {
 
     if !expected_values.is_empty() {
         eprintln!("loaded checkpoint with {} states", expected_values.len());
-
+/*
         let state = GameState {
-            numbers_total: 60,
+            numbers_total: 55,
             ones: FieldState::Filled,
             twos: FieldState::Empty,
             threes: FieldState::Filled,
@@ -43,11 +43,12 @@ fn main() {
             small_straight: FieldState::Filled,
             large_straight: FieldState::Filled,
             full_house: FieldState::Filled,
-            chance: FieldState::Filled,
-            yatzy: FieldState::Empty,
+            chance: FieldState::Empty,
+            yatzy: FieldState::Filled,
         };
         eprintln!("{:#?}: {}", state, expected_values.get(&state).unwrap());
         std::process::exit(0);
+*/
     }
 
     let mut total_states = 0;

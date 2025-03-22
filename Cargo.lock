@@ -717,6 +717,8 @@ version = "0.1.0"
 dependencies = [
  "itertools",
  "lazy_static",
+ "num-bigint",
+ "num-rational",
  "postcard",
  "rand",
  "rayon",

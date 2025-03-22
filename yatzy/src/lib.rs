@@ -9,8 +9,6 @@ use rand::{
     distr::{Distribution as _, Uniform},
 };
 
-//pub mod solver;
-
 pub type Die = u8;
 
 lazy_static! {

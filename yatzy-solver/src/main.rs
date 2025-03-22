@@ -1,18 +1,20 @@
 use std::{collections::HashMap, sync::Mutex};
 
 use lazy_static::lazy_static;
+use num_bigint::BigUint;
+use num_rational::Ratio;
 use yatzy::{Game, print_game};
 use yatzy_compute_expected_values::{Choice, GameState};
 
 use yatzy_solver::{best_choice_0_rerolls, best_choice_1_reroll, best_choice_2_rerolls};
 
 lazy_static! {
-    static ref EXPECTED_VALUES: Mutex<HashMap<GameState, f64>> =
+    static ref EXPECTED_VALUES: Mutex<HashMap<GameState, Ratio<BigUint>>> =
         Mutex::new(HashMap::with_capacity(958_974));
 }
 
 fn main() {
-    let map: HashMap<GameState, f64> = match std::fs::read("expected-values-random") {
+    let map: HashMap<GameState, Ratio<BigUint>> = match std::fs::read("expected-values-random") {
         Ok(bytes) => match postcard::from_bytes(&bytes) {
             Ok(map) => map,
             Err(error) => {
