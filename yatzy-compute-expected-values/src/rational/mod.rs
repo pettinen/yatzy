@@ -7,7 +7,7 @@ use num_rational::Ratio;
 use rayon::iter::{IntoParallelIterator as _, ParallelIterator as _};
 use yatzy::{Combo, Game};
 
-use crate::{state_from_game, Choice, GameState};
+use crate::{Choice, GameState, state_from_game};
 
 pub mod prob;
 
@@ -37,7 +37,9 @@ fn expected_value_0_rerolls(
         game.set_combo_raw(combo, Some(combo_points));
         let value = ExpectedValue::from(BigUint::from(combo_points))
             + if game.ended() {
-                ExpectedValue::from(BigUint::from(game.has_bonus().then_some(50_u8).unwrap_or(0_u8)))
+                ExpectedValue::from(BigUint::from(
+                    game.has_bonus().then_some(50_u8).unwrap_or(0_u8),
+                ))
             } else {
                 let state = state_from_game(game);
                 expected_values.get(&state).unwrap().clone()
@@ -88,7 +90,9 @@ fn expected_value_1_reroll(
                 game.set_combo_raw(combo, Some(combo_points));
                 ExpectedValue::from(BigUint::from(combo_points))
                     + if game.ended() {
-                        ExpectedValue::from(BigUint::from(game.has_bonus().then_some(50_u8).unwrap_or(0_u8)))
+                        ExpectedValue::from(BigUint::from(
+                            game.has_bonus().then_some(50_u8).unwrap_or(0_u8),
+                        ))
                     } else {
                         let state = state_from_game(game);
                         expected_values.get(&state).unwrap().clone()
@@ -200,7 +204,9 @@ pub fn expected_value_2_rerolls(
                 game.set_combo_raw(combo, Some(combo_points));
                 ExpectedValue::from(BigUint::from(combo_points))
                     + if game.ended() {
-                        ExpectedValue::from(BigUint::from(game.has_bonus().then_some(50_u8).unwrap_or(0_u8)))
+                        ExpectedValue::from(BigUint::from(
+                            game.has_bonus().then_some(50_u8).unwrap_or(0_u8),
+                        ))
                     } else {
                         let state = state_from_game(game);
                         expected_values.get(&state).unwrap().clone()

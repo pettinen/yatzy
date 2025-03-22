@@ -5,7 +5,7 @@ use lazy_static::lazy_static;
 use rayon::iter::{IntoParallelIterator as _, ParallelIterator as _};
 use yatzy::{Combo, Game};
 
-use crate::{state_from_game, Choice, GameState};
+use crate::{Choice, GameState, state_from_game};
 
 pub mod prob;
 

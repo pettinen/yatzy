@@ -11,9 +11,8 @@ use rayon::iter::{IntoParallelIterator as _, ParallelIterator as _};
 use yatzy::Dice;
 
 use yatzy_compute_expected_values::{
-    game_from_state, game_states_by_empty_field_count,
+    FieldState, GameState, game_from_state, game_states_by_empty_field_count,
     rational::{clear_cache, expected_value_2_rerolls, prob},
-    FieldState, GameState,
 };
 
 fn main() {

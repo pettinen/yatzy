@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use itertools::Itertools as _;
 use rayon::iter::{IntoParallelIterator as _, ParallelIterator as _};
 use yatzy::{Combo, Game};
-use yatzy_compute_expected_values::{float::prob, state_from_game, Choice, GameState};
+use yatzy_compute_expected_values::{Choice, GameState, float::prob, state_from_game};
 
 fn expected_score(game: Game, expected_values: &HashMap<GameState, f64>) -> f64 {
     if game.ended() {
@@ -19,7 +19,10 @@ fn expected_score(game: Game, expected_values: &HashMap<GameState, f64>) -> f64 
     }
 }
 
-pub fn best_choice_0_rerolls(game: Game, expected_values: &HashMap<GameState, f64>) -> (Choice, f64) {
+pub fn best_choice_0_rerolls(
+    game: Game,
+    expected_values: &HashMap<GameState, f64>,
+) -> (Choice, f64) {
     let mut best_choice = None;
     let mut max_expected_value = 0_f64;
 
@@ -40,7 +43,10 @@ pub fn best_choice_0_rerolls(game: Game, expected_values: &HashMap<GameState, f6
     (best_choice.unwrap(), max_expected_value)
 }
 
-pub fn best_choice_1_reroll(game: Game, expected_values: &HashMap<GameState, f64>) -> (Choice, f64) {
+pub fn best_choice_1_reroll(
+    game: Game,
+    expected_values: &HashMap<GameState, f64>,
+) -> (Choice, f64) {
     let mut choices = HashSet::new();
 
     for combo in Combo::iter() {
@@ -135,7 +141,10 @@ pub fn best_choice_1_reroll(game: Game, expected_values: &HashMap<GameState, f64
     (best_choice.unwrap(), max_expected_value)
 }
 
-pub fn best_choice_2_rerolls(game: Game, expected_values: &HashMap<GameState, f64>) -> (Choice, f64) {
+pub fn best_choice_2_rerolls(
+    game: Game,
+    expected_values: &HashMap<GameState, f64>,
+) -> (Choice, f64) {
     let mut choices = HashSet::new();
 
     for combo in Combo::iter() {
