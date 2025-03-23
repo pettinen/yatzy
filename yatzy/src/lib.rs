@@ -324,21 +324,7 @@ impl Game {
     }
 
     pub fn ended(&self) -> bool {
-        self.ones.is_some()
-            && self.twos.is_some()
-            && self.threes.is_some()
-            && self.fours.is_some()
-            && self.fives.is_some()
-            && self.sixes.is_some()
-            && self.one_pair.is_some()
-            && self.two_pairs.is_some()
-            && self.three_of_a_kind.is_some()
-            && self.four_of_a_kind.is_some()
-            && self.small_straight.is_some()
-            && self.large_straight.is_some()
-            && self.full_house.is_some()
-            && self.chance.is_some()
-            && self.yatzy.is_some()
+        self.round() == 15
     }
 
     pub fn has_bonus(&self) -> bool {
@@ -436,6 +422,12 @@ impl Game {
 
     pub fn rerolls_left(&self) -> u8 {
         self.rerolls_left
+    }
+
+    pub fn round(&self) -> u8 {
+        Combo::iter()
+            .map(|combo| self.combo(combo).is_some().then_some(1).unwrap_or(0))
+            .sum()
     }
 
     pub fn score(&self) -> u16 {

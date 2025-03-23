@@ -5,4 +5,3 @@ resolver = "3"
 [workspace.dependencies]
 yatzy = { path = "yatzy" }
 yatzy-compute-expected-values = { path = "yatzy-compute-expected-values" }
-yatzy-solver = { path = "yatzy-solver" }

@@ -306,6 +306,7 @@ checksum = "6827e3fc394523c21d4464d02c0bb1c19966ea4a58a9844ad6d746214179d2bc"
 dependencies = [
  "equivalent",
  "seize",
+ "serde",
 ]
 
 [[package]]
@@ -403,6 +404,12 @@ dependencies = [
  "crossbeam-deque",
  "crossbeam-utils",
 ]
+
+[[package]]
+name = "rustc-hash"
+version = "2.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "357703d41365b4b27c590e3ed91eabb1b663f07c4c084095e60cbed4362dff0d"
 
 [[package]]
 name = "rustc_version"
@@ -719,9 +726,11 @@ dependencies = [
  "lazy_static",
  "num-bigint",
  "num-rational",
+ "papaya",
  "postcard",
  "rand",
  "rayon",
+ "rustc-hash",
  "yatzy",
  "yatzy-compute-expected-values",
 ]

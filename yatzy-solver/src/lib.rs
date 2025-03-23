@@ -1,10 +1,10 @@
-use std::collections::{HashMap, HashSet};
-
 use itertools::Itertools as _;
 use lazy_static::lazy_static;
 use num_bigint::BigUint;
 use num_rational::Ratio;
+use papaya::HashMap;
 use rayon::iter::{IntoParallelRefIterator as _, ParallelIterator as _};
+use rustc_hash::FxHashSet;
 use yatzy::{Combo, Die, Game};
 use yatzy_compute_expected_values::{Choice, GameState, rational::prob, state_from_game};
 
@@ -40,12 +40,13 @@ fn expected_score(
     game: Game,
     expected_values: &HashMap<GameState, Ratio<BigUint>>,
 ) -> Ratio<BigUint> {
-    if game.ended() {
+    // TODO remove `round() < 11` once precomputation finishes
+    if game.ended() || game.round() < 11 {
         Ratio::from(BigUint::from(game.score()))
     } else {
         let state = state_from_game(game);
 
-        let mut value = expected_values.get(&state).unwrap().clone();
+        let mut value = expected_values.pin().get(&state).unwrap().clone();
         for combo in Combo::iter() {
             value += Ratio::from(BigUint::from(game.combo(combo).unwrap_or(0)));
         }
@@ -56,7 +57,14 @@ fn expected_score(
 pub fn best_choice_0_rerolls(
     game: Game,
     expected_values: &HashMap<GameState, Ratio<BigUint>>,
+    cache: &HashMap<Game, (Choice, Ratio<BigUint>)>,
 ) -> (Choice, Ratio<BigUint>) {
+    assert!(game.rerolls_left() == 0);
+
+    if let Some(value) = cache.pin().get(&game) {
+        return value.clone();
+    }
+
     let mut best_choice = None;
     let mut max_expected_value = Ratio::from(BigUint::from(0_u8));
 
@@ -74,14 +82,23 @@ pub fn best_choice_0_rerolls(
         }
     }
 
-    (best_choice.unwrap(), max_expected_value)
+    let rv = (best_choice.unwrap(), max_expected_value);
+    cache.pin().insert(game, rv.clone());
+    rv
 }
 
 pub fn best_choice_1_reroll(
     game: Game,
     expected_values: &HashMap<GameState, Ratio<BigUint>>,
+    cache: &HashMap<Game, (Choice, Ratio<BigUint>)>,
 ) -> (Choice, Ratio<BigUint>) {
-    let mut choices = HashSet::new();
+    assert!(game.rerolls_left() == 1);
+
+    if let Some(value) = cache.pin().get(&game) {
+        return value.clone();
+    }
+
+    let mut choices = FxHashSet::default();
 
     for combo in Combo::iter() {
         if game.combo(combo).is_none() {
@@ -120,7 +137,7 @@ pub fn best_choice_1_reroll(
                     let mut game = game.clone();
                     game.replace_dice(&dice, new_dice).unwrap();
                     game.set_rerolls(0);
-                    let (_, value) = best_choice_0_rerolls(game, expected_values);
+                    let (_, value) = best_choice_0_rerolls(game, expected_values, cache);
                     prob * value
                 })
                 .sum(),
@@ -130,7 +147,7 @@ pub fn best_choice_1_reroll(
                     let mut game = game.clone();
                     game.replace_dice(&dice, new_dice).unwrap();
                     game.set_rerolls(0);
-                    let (_, value) = best_choice_0_rerolls(game, expected_values);
+                    let (_, value) = best_choice_0_rerolls(game, expected_values, cache);
                     prob * value
                 })
                 .sum(),
@@ -140,7 +157,7 @@ pub fn best_choice_1_reroll(
                     let mut game = game.clone();
                     game.replace_dice(&dice, new_dice).unwrap();
                     game.set_rerolls(0);
-                    let (_, value) = best_choice_0_rerolls(game, expected_values);
+                    let (_, value) = best_choice_0_rerolls(game, expected_values, cache);
                     prob * value
                 })
                 .sum(),
@@ -150,7 +167,7 @@ pub fn best_choice_1_reroll(
                     let mut game = game.clone();
                     game.replace_dice(&dice, new_dice).unwrap();
                     game.set_rerolls(0);
-                    let (_, value) = best_choice_0_rerolls(game, expected_values);
+                    let (_, value) = best_choice_0_rerolls(game, expected_values, cache);
                     prob * value
                 })
                 .sum(),
@@ -160,7 +177,7 @@ pub fn best_choice_1_reroll(
                     let mut game = game.clone();
                     game.replace_dice(&dice, new_dice).unwrap();
                     game.set_rerolls(0);
-                    let (_, value) = best_choice_0_rerolls(game, expected_values);
+                    let (_, value) = best_choice_0_rerolls(game, expected_values, cache);
                     prob * value
                 })
                 .sum(),
@@ -172,14 +189,23 @@ pub fn best_choice_1_reroll(
         }
     }
 
-    (best_choice.unwrap(), max_expected_value)
+    let rv = (best_choice.unwrap(), max_expected_value);
+    cache.pin().insert(game, rv.clone());
+    rv
 }
 
 pub fn best_choice_2_rerolls(
     game: Game,
     expected_values: &HashMap<GameState, Ratio<BigUint>>,
+    cache: &HashMap<Game, (Choice, Ratio<BigUint>)>,
 ) -> (Choice, Ratio<BigUint>) {
-    let mut choices = HashSet::new();
+    assert!(game.rerolls_left() == 2);
+
+    if let Some(value) = cache.pin().get(&game) {
+        return value.clone();
+    }
+
+    let mut choices = FxHashSet::default();
 
     for combo in Combo::iter() {
         if game.combo(combo).is_none() {
@@ -217,8 +243,8 @@ pub fn best_choice_2_rerolls(
                 .map(|(new_dice, prob)| {
                     let mut game = game.clone();
                     game.replace_dice(&dice, new_dice).unwrap();
-                    game.set_rerolls(0);
-                    let (_, value) = best_choice_1_reroll(game, expected_values);
+                    game.set_rerolls(1);
+                    let (_, value) = best_choice_1_reroll(game, expected_values, cache);
                     prob * value
                 })
                 .sum(),
@@ -227,8 +253,8 @@ pub fn best_choice_2_rerolls(
                 .map(|(new_dice, prob)| {
                     let mut game = game.clone();
                     game.replace_dice(&dice, new_dice).unwrap();
-                    game.set_rerolls(0);
-                    let (_, value) = best_choice_1_reroll(game, expected_values);
+                    game.set_rerolls(1);
+                    let (_, value) = best_choice_1_reroll(game, expected_values, cache);
                     prob * value
                 })
                 .sum(),
@@ -237,8 +263,8 @@ pub fn best_choice_2_rerolls(
                 .map(|(new_dice, prob)| {
                     let mut game = game.clone();
                     game.replace_dice(&dice, new_dice).unwrap();
-                    game.set_rerolls(0);
-                    let (_, value) = best_choice_1_reroll(game, expected_values);
+                    game.set_rerolls(1);
+                    let (_, value) = best_choice_1_reroll(game, expected_values, cache);
                     prob * value
                 })
                 .sum(),
@@ -247,8 +273,8 @@ pub fn best_choice_2_rerolls(
                 .map(|(new_dice, prob)| {
                     let mut game = game.clone();
                     game.replace_dice(&dice, new_dice).unwrap();
-                    game.set_rerolls(0);
-                    let (_, value) = best_choice_1_reroll(game, expected_values);
+                    game.set_rerolls(1);
+                    let (_, value) = best_choice_1_reroll(game, expected_values, cache);
                     prob * value
                 })
                 .sum(),
@@ -257,8 +283,8 @@ pub fn best_choice_2_rerolls(
                 .map(|(new_dice, prob)| {
                     let mut game = game.clone();
                     game.replace_dice(&dice, new_dice).unwrap();
-                    game.set_rerolls(0);
-                    let (_, value) = best_choice_1_reroll(game, expected_values);
+                    game.set_rerolls(1);
+                    let (_, value) = best_choice_1_reroll(game, expected_values, cache);
                     prob * value
                 })
                 .sum(),
@@ -270,5 +296,7 @@ pub fn best_choice_2_rerolls(
         }
     }
 
-    (best_choice.unwrap(), max_expected_value)
+    let rv = (best_choice.unwrap(), max_expected_value);
+    cache.pin().insert(game, rv.clone());
+    rv
 }

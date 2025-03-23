@@ -8,8 +8,10 @@ itertools = "0.14.0"
 lazy_static = "1.5.0"
 num-bigint = { version = "0.4.6", features = ["serde"] }
 num-rational = { version = "0.4.2", features = ["serde"] }
+papaya = { version = "0.2.1", features = ["serde"] }
 postcard = "1.1.1"
 rand = "0.9.0"
 rayon = "1.10.0"
+rustc-hash = "2.1.1"
 yatzy = { workspace = true }
 yatzy-compute-expected-values = { workspace = true }
