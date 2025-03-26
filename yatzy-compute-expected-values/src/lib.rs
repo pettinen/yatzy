@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
+use rustc_hash::FxBuildHasher;
 use serde::{Deserialize, Serialize};
 use yatzy::{Combo, Dice, Die, Game};
 
@@ -285,7 +286,7 @@ pub fn state_from_game(game: Game) -> GameState {
     }
 }
 
-pub fn game_states_by_empty_field_count() -> HashMap<u8, HashSet<GameState>> {
+pub fn game_states_by_empty_field_count() -> HashMap<u8, HashSet<GameState, FxBuildHasher>> {
     let number_states = [
         NumberState::Empty,
         NumberState::Filled0,
@@ -299,7 +300,7 @@ pub fn game_states_by_empty_field_count() -> HashMap<u8, HashSet<GameState>> {
 
     let mut map = HashMap::with_capacity(15);
     for n in 1..=15 {
-        map.insert(n, HashSet::new());
+        map.insert(n, HashSet::with_hasher(FxBuildHasher));
     }
 
     for (n1, n2, n3, n4, n5, n6) in itertools::iproduct!(

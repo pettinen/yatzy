@@ -1429,6 +1429,7 @@ dependencies = [
  "papaya",
  "postcard",
  "rayon",
+ "rustc-hash",
  "serde",
  "yatzy",
 ]

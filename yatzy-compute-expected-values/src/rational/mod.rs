@@ -1,10 +1,10 @@
-use std::collections::{HashMap, HashSet};
+use std::{collections::{HashMap, HashSet}, hash::BuildHasher};
 
 use itertools::Itertools as _;
 use lazy_static::lazy_static;
 use num_bigint::BigUint;
 use num_rational::Ratio;
-use rayon::iter::{IntoParallelRefIterator as _, ParallelIterator as _};
+use rustc_hash::FxBuildHasher;
 use yatzy::{Combo, Dice, Die, Game};
 
 use crate::{Choice, GameState, state_from_game};
@@ -19,18 +19,18 @@ fn convert_prob(ratio: Ratio<u16>) -> ExpectedValue {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-enum CacheKey {
-    Retain0(u8),
-    Retain1(u8, [Die; 1]),
-    Retain2(u8, [Die; 2]),
-    Retain3(u8, [Die; 3]),
-    Retain4(u8, [Die; 4]),
-    SelectCombo(Combo, u8, Dice),
-    SingleRoll(u8, Dice),
+pub enum CacheKey {
+    Reroll(Game),
+    Retain0(u8, GameState),
+    Retain1(u8, [Die; 1], GameState),
+    Retain2(u8, [Die; 2], GameState),
+    Retain3(u8, [Die; 3], GameState),
+    Retain4(u8, [Die; 4], GameState),
+    SelectCombo(Combo, u8, Dice, GameState),
+    ZeroRerolls(Game),
 }
 
 lazy_static! {
-    static ref CACHE: papaya::HashMap<(CacheKey, GameState), ExpectedValue> = papaya::HashMap::new();
     static ref ROLL_1_PROB: Vec<([Die; 1], ExpectedValue)> = prob::ROLL_1_PROB
         .into_iter()
         .map(|(dice, prob)| (dice, convert_prob(prob)))
@@ -53,10 +53,15 @@ lazy_static! {
         .collect();
 }
 
-fn expected_value_0_rerolls(
+fn expected_value_0_rerolls<S1: BuildHasher, S2: BuildHasher>(
     game: Game,
-    expected_values: &HashMap<GameState, ExpectedValue>,
+    expected_values: &HashMap<GameState, ExpectedValue, S1>,
+    cache: &papaya::HashMap<CacheKey, ExpectedValue, S2>,
 ) -> ExpectedValue {
+    if let Some(value) = cache.pin().get(&CacheKey::ZeroRerolls(game)) {
+        return value.clone();
+    }
+
     let mut max_expected_value = ExpectedValue::new(0_u8.into(), 1_u8.into());
 
     for combo in Combo::iter() {
@@ -80,14 +85,16 @@ fn expected_value_0_rerolls(
         }
     }
 
+    cache.pin().insert(CacheKey::ZeroRerolls(game), max_expected_value.clone());
     max_expected_value
 }
 
-fn expected_value_1_reroll(
+fn expected_value_1_reroll<S1: BuildHasher, S2: BuildHasher>(
     game: Game,
-    expected_values: &HashMap<GameState, ExpectedValue>,
+    expected_values: &HashMap<GameState, ExpectedValue, S1>,
+    cache: &papaya::HashMap<CacheKey, ExpectedValue, S2>,
 ) -> ExpectedValue {
-    let mut choices = HashSet::new();
+    let mut choices = HashSet::with_hasher(FxBuildHasher);
 
     for combo in Combo::iter() {
         if game.combo(combo).is_none() {
@@ -117,7 +124,7 @@ fn expected_value_1_reroll(
 
     for choice in choices {
         let value = match choice {
-            Choice::SelectCombo(combo) => if let Some(value) = CACHE.pin().get(&(CacheKey::SelectCombo(combo, 1, original_dice), state)) {
+            Choice::SelectCombo(combo) => if let Some(value) = cache.pin().get(&CacheKey::SelectCombo(combo, 1, original_dice, state)) {
                 value.clone()
             } else {
                 let mut game = game.clone();
@@ -132,124 +139,127 @@ fn expected_value_1_reroll(
                         let state = state_from_game(game);
                         expected_values.get(&state).unwrap().clone()
                     };
-                CACHE.pin().insert((CacheKey::SelectCombo(combo, 1, original_dice), state), value.clone());
+                cache.pin().insert(CacheKey::SelectCombo(combo, 1, original_dice, state), value.clone());
                 value
             },
             Choice::Reroll1(dice) => {
                 let mut retained_dice = original_dice.into_iter().collect::<Vec<_>>();
                 for rerolled_die in dice {
-                    retained_dice.remove(retained_dice.iter().position(|&die| die == rerolled_die).unwrap());
+                    retained_dice.swap_remove(retained_dice.iter().position(|&die| die == rerolled_die).unwrap());
                 }
-                let retained_dice = retained_dice.try_into().unwrap();
+                let mut retained_dice: [Die; 4] = retained_dice.try_into().unwrap();
+                retained_dice.sort_unstable();
 
-                if let Some(value) = CACHE.pin().get(&(CacheKey::Retain4(1, retained_dice), state)) {
+                if let Some(value) = cache.pin().get(&CacheKey::Retain4(1, retained_dice, state)) {
                     value.clone()
                 } else {
                     let value: ExpectedValue = ROLL_1_PROB
-                    .par_iter()
+                    .iter()
                     .map(|(new_dice, prob)| {
                         let mut game = game.clone();
                         _ = game.replace_dice(&dice, new_dice);
                         game.set_rerolls(0);
-                        prob * CACHE.pin().get_or_insert_with((CacheKey::SingleRoll(0, game.dice()), state), || {
-                            expected_value_0_rerolls(game, expected_values)
+                        prob * cache.pin().get_or_insert_with(CacheKey::Reroll(game), || {
+                            expected_value_0_rerolls(game, expected_values, cache)
                         })
                     })
                     .sum();
-                    CACHE.pin().insert((CacheKey::Retain4(1, retained_dice), state), value.clone());
+                    cache.pin().insert(CacheKey::Retain4(1, retained_dice, state), value.clone());
                     value
                 }
             }
             Choice::Reroll2(dice) => {
                 let mut retained_dice = original_dice.into_iter().collect::<Vec<_>>();
                 for rerolled_die in dice {
-                    retained_dice.remove(retained_dice.iter().position(|&die| die == rerolled_die).unwrap());
+                    retained_dice.swap_remove(retained_dice.iter().position(|&die| die == rerolled_die).unwrap());
                 }
-                let retained_dice = retained_dice.try_into().unwrap();
+                let mut retained_dice: [Die; 3] = retained_dice.try_into().unwrap();
+                retained_dice.sort_unstable();
 
-                if let Some(value) = CACHE.pin().get(&(CacheKey::Retain3(1, retained_dice), state)) {
+                if let Some(value) = cache.pin().get(&CacheKey::Retain3(1, retained_dice, state)) {
                     value.clone()
                 } else {
                     let value: ExpectedValue = ROLL_2_PROB
-                    .par_iter()
+                    .iter()
                     .map(|(new_dice, prob)| {
                         let mut game = game.clone();
                         _ = game.replace_dice(&dice, new_dice);
                         game.set_rerolls(0);
-                        prob * CACHE.pin().get_or_insert_with((CacheKey::SingleRoll(0, game.dice()), state), || {
-                            expected_value_0_rerolls(game, expected_values)
+                        prob * cache.pin().get_or_insert_with(CacheKey::Reroll(game), || {
+                            expected_value_0_rerolls(game, expected_values, cache)
                         })
                     })
                     .sum();
-                    CACHE.pin().insert((CacheKey::Retain3(1, retained_dice), state), value.clone());
+                    cache.pin().insert(CacheKey::Retain3(1, retained_dice, state), value.clone());
                     value
                 }
             }
             Choice::Reroll3(dice) => {
                 let mut retained_dice = original_dice.into_iter().collect::<Vec<_>>();
                 for rerolled_die in dice {
-                    retained_dice.remove(retained_dice.iter().position(|&die| die == rerolled_die).unwrap());
+                    retained_dice.swap_remove(retained_dice.iter().position(|&die| die == rerolled_die).unwrap());
                 }
-                let retained_dice = retained_dice.try_into().unwrap();
+                let mut retained_dice: [Die; 2] = retained_dice.try_into().unwrap();
+                retained_dice.sort_unstable();
 
-                if let Some(value) = CACHE.pin().get(&(CacheKey::Retain2(1, retained_dice), state)) {
+                if let Some(value) = cache.pin().get(&CacheKey::Retain2(1, retained_dice, state)) {
                     value.clone()
                 } else {
                     let value: ExpectedValue = ROLL_3_PROB
-                    .par_iter()
+                    .iter()
                     .map(|(new_dice, prob)| {
                         let mut game = game.clone();
                         _ = game.replace_dice(&dice, new_dice);
                         game.set_rerolls(0);
-                        prob * CACHE.pin().get_or_insert_with((CacheKey::SingleRoll(0, game.dice()), state), || {
-                            expected_value_0_rerolls(game, expected_values)
+                        prob * cache.pin().get_or_insert_with(CacheKey::Reroll(game), || {
+                            expected_value_0_rerolls(game, expected_values, cache)
                         })
                     })
                     .sum();
-                    CACHE.pin().insert((CacheKey::Retain2(1, retained_dice), state), value.clone());
+                    cache.pin().insert(CacheKey::Retain2(1, retained_dice, state), value.clone());
                     value
                 }
             }
             Choice::Reroll4(dice) => {
                 let mut retained_dice = original_dice.into_iter().collect::<Vec<_>>();
                 for rerolled_die in dice {
-                    retained_dice.remove(retained_dice.iter().position(|&die| die == rerolled_die).unwrap());
+                    retained_dice.swap_remove(retained_dice.iter().position(|&die| die == rerolled_die).unwrap());
                 }
-                let retained_dice = retained_dice.try_into().unwrap();
+                let retained_dice: [Die; 1] = retained_dice.try_into().unwrap();
 
-                if let Some(value) = CACHE.pin().get(&(CacheKey::Retain1(1, retained_dice), state)) {
+                if let Some(value) = cache.pin().get(&CacheKey::Retain1(1, retained_dice, state)) {
                     value.clone()
                 } else {
                     let value: ExpectedValue = ROLL_4_PROB
-                    .par_iter()
+                    .iter()
                     .map(|(new_dice, prob)| {
                         let mut game = game.clone();
                         _ = game.replace_dice(&dice, new_dice);
                         game.set_rerolls(0);
-                        prob * CACHE.pin().get_or_insert_with((CacheKey::SingleRoll(0, game.dice()), state), || {
-                            expected_value_0_rerolls(game, expected_values)
+                        prob * cache.pin().get_or_insert_with(CacheKey::Reroll(game), || {
+                            expected_value_0_rerolls(game, expected_values, cache)
                         })
                     })
                     .sum();
-                    CACHE.pin().insert((CacheKey::Retain1(1, retained_dice), state), value.clone());
+                    cache.pin().insert(CacheKey::Retain1(1, retained_dice, state), value.clone());
                     value
                 }
             }
-            Choice::Reroll5(dice) => if let Some(value) = CACHE.pin().get(&(CacheKey::Retain0(1), state)) {
+            Choice::Reroll5(dice) => if let Some(value) = cache.pin().get(&CacheKey::Retain0(1, state)) {
                 value.clone()
             } else {
                 let value: ExpectedValue = ROLL_5_PROB
-                .par_iter()
+                .iter()
                 .map(|(new_dice, prob)| {
                     let mut game = game.clone();
                     _ = game.replace_dice(&dice, new_dice);
                     game.set_rerolls(0);
-                    prob * CACHE.pin().get_or_insert_with((CacheKey::SingleRoll(0, game.dice()), state), || {
-                        expected_value_0_rerolls(game, expected_values)
+                    prob * cache.pin().get_or_insert_with(CacheKey::Reroll(game), || {
+                        expected_value_0_rerolls(game, expected_values, cache)
                     })
                 })
                 .sum();
-                CACHE.pin().insert((CacheKey::Retain0(1), state), value.clone());
+                cache.pin().insert(CacheKey::Retain0(1, state), value.clone());
                 value
             },
         };
@@ -262,12 +272,13 @@ fn expected_value_1_reroll(
     max_expected_value
 }
 
-pub fn expected_value_2_rerolls(
+pub fn expected_value_2_rerolls<S1: BuildHasher, S2: BuildHasher>(
     game: Game,
-    expected_values: &HashMap<GameState, ExpectedValue>,
+    expected_values: &HashMap<GameState, ExpectedValue, S1>,
+    cache: &papaya::HashMap<CacheKey, ExpectedValue, S2>,
 ) -> ExpectedValue {
 
-    let mut choices = HashSet::new();
+    let mut choices = HashSet::with_hasher(FxBuildHasher);
 
     for combo in Combo::iter() {
         if game.combo(combo).is_none() {
@@ -297,7 +308,7 @@ pub fn expected_value_2_rerolls(
 
     for choice in choices {
         let value = match choice {
-            Choice::SelectCombo(combo) => if let Some(value) = CACHE.pin().get(&(CacheKey::SelectCombo(combo, 2, original_dice), state)) {
+            Choice::SelectCombo(combo) => if let Some(value) = cache.pin().get(&CacheKey::SelectCombo(combo, 2, original_dice, state)) {
                 value.clone()
             } else {
                 let mut game = game.clone();
@@ -312,124 +323,127 @@ pub fn expected_value_2_rerolls(
                         let state = state_from_game(game);
                         expected_values.get(&state).unwrap().clone()
                     };
-                CACHE.pin().insert((CacheKey::SelectCombo(combo, 2, original_dice), state), value.clone());
+                cache.pin().insert(CacheKey::SelectCombo(combo, 2, original_dice, state), value.clone());
                 value
             },
             Choice::Reroll1(dice) => {
                 let mut retained_dice = original_dice.into_iter().collect::<Vec<_>>();
                 for rerolled_die in dice {
-                    retained_dice.remove(retained_dice.iter().position(|&die| die == rerolled_die).unwrap());
+                    retained_dice.swap_remove(retained_dice.iter().position(|&die| die == rerolled_die).unwrap());
                 }
-                let retained_dice = retained_dice.try_into().unwrap();
+                let mut retained_dice: [Die; 4] = retained_dice.try_into().unwrap();
+                retained_dice.sort_unstable();
 
-                if let Some(value) = CACHE.pin().get(&(CacheKey::Retain4(2, retained_dice), state)) {
+                if let Some(value) = cache.pin().get(&CacheKey::Retain4(2, retained_dice, state)) {
                     value.clone()
                 } else {
                     let value: ExpectedValue = ROLL_1_PROB
-                    .par_iter()
+                    .iter()
                     .map(|(new_dice, prob)| {
                         let mut game = game.clone();
                         _ = game.replace_dice(&dice, new_dice);
                         game.set_rerolls(1);
-                        prob * CACHE
+                        prob * cache
                             .pin()
-                            .get_or_insert_with((CacheKey::SingleRoll(1, game.dice()), state), || expected_value_1_reroll(game, expected_values))
+                            .get_or_insert_with(CacheKey::Reroll(game), || expected_value_1_reroll(game, expected_values, cache))
                     })
                     .sum();
-                    CACHE.pin().insert((CacheKey::Retain4(2, retained_dice), state), value.clone());
+                    cache.pin().insert(CacheKey::Retain4(2, retained_dice, state), value.clone());
                     value
                 }
             }
             Choice::Reroll2(dice) => {
                 let mut retained_dice = original_dice.into_iter().collect::<Vec<_>>();
                 for rerolled_die in dice {
-                    retained_dice.remove(retained_dice.iter().position(|&die| die == rerolled_die).unwrap());
+                    retained_dice.swap_remove(retained_dice.iter().position(|&die| die == rerolled_die).unwrap());
                 }
-                let retained_dice = retained_dice.try_into().unwrap();
+                let mut retained_dice: [Die; 3] = retained_dice.try_into().unwrap();
+                retained_dice.sort_unstable();
 
-                if let Some(value) = CACHE.pin().get(&(CacheKey::Retain3(2, retained_dice), state)) {
+                if let Some(value) = cache.pin().get(&CacheKey::Retain3(2, retained_dice, state)) {
                     value.clone()
                 } else {
                     let value: ExpectedValue = ROLL_2_PROB
-                    .par_iter()
+                    .iter()
                     .map(|(new_dice, prob)| {
                         let mut game = game.clone();
                         _ = game.replace_dice(&dice, new_dice);
                         game.set_rerolls(1);
-                        prob * CACHE
+                        prob * cache
                             .pin()
-                            .get_or_insert_with((CacheKey::SingleRoll(1, game.dice()), state), || expected_value_1_reroll(game, expected_values))
+                            .get_or_insert_with(CacheKey::Reroll(game), || expected_value_1_reroll(game, expected_values, cache))
                     })
                     .sum();
-                    CACHE.pin().insert((CacheKey::Retain3(2, retained_dice), state), value.clone());
+                    cache.pin().insert(CacheKey::Retain3(2, retained_dice, state), value.clone());
                     value
                 }
             }
             Choice::Reroll3(dice) => {
                 let mut retained_dice = original_dice.into_iter().collect::<Vec<_>>();
                 for rerolled_die in dice {
-                    retained_dice.remove(retained_dice.iter().position(|&die| die == rerolled_die).unwrap());
+                    retained_dice.swap_remove(retained_dice.iter().position(|&die| die == rerolled_die).unwrap());
                 }
-                let retained_dice = retained_dice.try_into().unwrap();
+                let mut retained_dice: [Die; 2] = retained_dice.try_into().unwrap();
+                retained_dice.sort_unstable();
 
-                if let Some(value) = CACHE.pin().get(&(CacheKey::Retain2(2, retained_dice), state)) {
+                if let Some(value) = cache.pin().get(&CacheKey::Retain2(2, retained_dice, state)) {
                     value.clone()
                 } else {
                     let value: ExpectedValue = ROLL_3_PROB
-                    .par_iter()
+                    .iter()
                     .map(|(new_dice, prob)| {
                         let mut game = game.clone();
                         _ = game.replace_dice(&dice, new_dice);
                         game.set_rerolls(1);
-                        prob * CACHE
+                        prob * cache
                             .pin()
-                            .get_or_insert_with((CacheKey::SingleRoll(1, game.dice()), state), || expected_value_1_reroll(game, expected_values))
+                            .get_or_insert_with(CacheKey::Reroll(game), || expected_value_1_reroll(game, expected_values, cache))
                     })
                     .sum();
-                    CACHE.pin().insert((CacheKey::Retain2(2, retained_dice), state), value.clone());
+                    cache.pin().insert(CacheKey::Retain2(2, retained_dice, state), value.clone());
                     value
                 }
             }
             Choice::Reroll4(dice) => {
                 let mut retained_dice = original_dice.into_iter().collect::<Vec<_>>();
                 for rerolled_die in dice {
-                    retained_dice.remove(retained_dice.iter().position(|&die| die == rerolled_die).unwrap());
+                    retained_dice.swap_remove(retained_dice.iter().position(|&die| die == rerolled_die).unwrap());
                 }
                 let retained_dice = retained_dice.try_into().unwrap();
 
-                if let Some(value) = CACHE.pin().get(&(CacheKey::Retain1(2, retained_dice), state)) {
+                if let Some(value) = cache.pin().get(&CacheKey::Retain1(2, retained_dice, state)) {
                     value.clone()
                 } else {
                     let value: ExpectedValue = ROLL_4_PROB
-                    .par_iter()
+                    .iter()
                     .map(|(new_dice, prob)| {
                         let mut game = game.clone();
                         _ = game.replace_dice(&dice, new_dice);
                         game.set_rerolls(1);
-                        prob * CACHE
+                        prob * cache
                             .pin()
-                            .get_or_insert_with((CacheKey::SingleRoll(1, game.dice()), state), || expected_value_1_reroll(game, expected_values))
+                            .get_or_insert_with(CacheKey::Reroll(game), || expected_value_1_reroll(game, expected_values, cache))
                     })
                     .sum();
-                    CACHE.pin().insert((CacheKey::Retain1(2, retained_dice), state), value.clone());
+                    cache.pin().insert(CacheKey::Retain1(2, retained_dice, state), value.clone());
                     value
                 }
             }
-            Choice::Reroll5(dice) => if let Some(value) = CACHE.pin().get(&(CacheKey::Retain0(2), state)) {
+            Choice::Reroll5(dice) => if let Some(value) = cache.pin().get(&CacheKey::Retain0(2, state)) {
                 value.clone()
             } else {
                 let value: ExpectedValue = ROLL_5_PROB
-                .par_iter()
+                .iter()
                 .map(|(new_dice, prob)| {
                     let mut game = game.clone();
                     _ = game.replace_dice(&dice, new_dice);
                     game.set_rerolls(1);
-                    prob * CACHE
+                    prob * cache
                         .pin()
-                        .get_or_insert_with((CacheKey::SingleRoll(1, game.dice()), state), || expected_value_1_reroll(game, expected_values))
+                        .get_or_insert_with(CacheKey::Reroll(game), || expected_value_1_reroll(game, expected_values, cache))
                 })
                 .sum();
-                CACHE.pin().insert((CacheKey::Retain0(2), state), value.clone());
+                cache.pin().insert(CacheKey::Retain0(2, state), value.clone());
                 value
             },
         };
@@ -440,8 +454,4 @@ pub fn expected_value_2_rerolls(
     }
 
     max_expected_value
-}
-
-pub fn clear_cache() {
-    CACHE.pin().clear();
 }
