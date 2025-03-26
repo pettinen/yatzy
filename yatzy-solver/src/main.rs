@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use lazy_static::lazy_static;
 use num_bigint::BigUint;
 use num_rational::Ratio;
-use yatzy::{Game, print_game};
+use yatzy::{Combo, Game, print_game};
 use yatzy_compute_expected_values::{Choice, GameState};
 
 use yatzy_solver::{best_choice_0_rerolls, best_choice_1_reroll, best_choice_2_rerolls};
@@ -54,7 +54,7 @@ fn main() {
         }
     }
 
-    // benchmark(true);
+    //benchmark(true);
 }
 
 fn benchmark(print: bool) -> u16 {
@@ -74,45 +74,70 @@ fn benchmark(print: bool) -> u16 {
             2 => best_choice_2_rerolls(game, &EXPECTED_VALUES, &cache),
             _ => unreachable!(),
         };
+
+        if print {
+            println!();
+        }
+
         match choice {
             Choice::SelectCombo(combo) => {
                 game.select_combo(combo, &mut rng).unwrap();
                 if print {
-                    println!("selected {combo:?}");
+                    println!(
+                        "Selecting {}",
+                        match combo {
+                            Combo::Ones => "ones",
+                            Combo::Twos => "twos",
+                            Combo::Threes => "threes",
+                            Combo::Fours => "fours",
+                            Combo::Fives => "fives",
+                            Combo::Sixes => "sixes",
+                            Combo::OnePair => "one pair",
+                            Combo::TwoPairs => "two pairs",
+                            Combo::ThreeOfAKind => "three of a kind",
+                            Combo::FourOfAKind => "four of a kind",
+                            Combo::SmallStraight => "small straight",
+                            Combo::LargeStraight => "large straight",
+                            Combo::FullHouse => "full house",
+                            Combo::Chance => "chance",
+                            Combo::Yatzy => "Yatzy",
+                        },
+                    );
                 }
             }
             Choice::Reroll1(dice) => {
                 game.reroll(&dice, &mut rng).unwrap();
                 if print {
-                    println!("rerolling {dice:?}");
+                    println!("Rerolling {}", dice[0]);
                 }
             }
             Choice::Reroll2(dice) => {
                 game.reroll(&dice, &mut rng).unwrap();
                 if print {
-                    println!("rerolling {dice:?}");
+                    println!("Rerolling {} {}", dice[0], dice[1]);
                 }
             }
             Choice::Reroll3(dice) => {
                 game.reroll(&dice, &mut rng).unwrap();
                 if print {
-                    println!("rerolling {dice:?}");
+                    println!("Rerolling {} {} {}", dice[0], dice[1], dice[2]);
                 }
             }
             Choice::Reroll4(dice) => {
                 game.reroll(&dice, &mut rng).unwrap();
                 if print {
-                    println!("rerolling {dice:?}");
+                    println!("Rerolling {} {} {} {}", dice[0], dice[1], dice[2], dice[3]);
                 }
             }
             Choice::Reroll5(dice) => {
                 game.reroll(&dice, &mut rng).unwrap();
                 if print {
-                    println!("rerolling {dice:?}");
+                    println!("Rerolling {} {} {} {} {}", dice[0], dice[1], dice[2], dice[3], dice[4]);
                 }
             }
         }
         if print {
+            println!();
             print_game(game);
         }
     }

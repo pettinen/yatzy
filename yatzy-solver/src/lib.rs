@@ -6,7 +6,9 @@ use papaya::HashMap;
 use rayon::iter::{IntoParallelRefIterator as _, ParallelIterator as _};
 use rustc_hash::FxHashSet;
 use yatzy::{Combo, Die, Game};
-use yatzy_compute_expected_values::{Choice, GameState, rational::prob, state_from_game};
+use yatzy_compute_expected_values::{rational::prob, state_from_game};
+
+pub use yatzy_compute_expected_values::{Choice, GameState};
 
 fn convert_prob(ratio: Ratio<u16>) -> Ratio<BigUint> {
     let (numer, denom) = ratio.into_raw();
@@ -40,8 +42,8 @@ fn expected_score(
     game: Game,
     expected_values: &HashMap<GameState, Ratio<BigUint>>,
 ) -> Ratio<BigUint> {
-    // TODO remove `round() < 11` once precomputation finishes
-    if game.ended() || game.round() < 11 {
+    // TODO remove `round() < 9` once precomputation finishes
+    if game.ended() || game.round() < 9 {
         Ratio::from(BigUint::from(game.score()))
     } else {
         let state = state_from_game(game);

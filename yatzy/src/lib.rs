@@ -26,7 +26,23 @@ pub enum DiceReplaceError {
     InvalidDice,
 }
 
+#[derive(Clone, Copy, Debug, thiserror::Error)]
+pub enum NewDiceError {
+    #[error("invalid die value")]
+    InvalidDieValue,
+}
+
 impl Dice {
+    pub fn new(mut dice: [Die; 5]) -> Result<Self, NewDiceError> {
+        for die in dice {
+            if die < 1 || die > 6 {
+                return Err(NewDiceError::InvalidDieValue);
+            }
+        }
+        dice.sort_unstable();
+        Ok(Self { array: dice })
+    }
+
     pub fn new_random<R: Rng>(rng: &mut R) -> Self {
         let mut array = [(); 5].map(|_| DISTRIBUTION.sample(rng));
         array.sort_unstable();
@@ -260,6 +276,27 @@ impl Iterator for ComboIterator {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct GameOptions {
+    pub dice: [Die; 5],
+    pub rerolls_left: u8,
+    pub ones: Option<u8>,
+    pub twos: Option<u8>,
+    pub threes: Option<u8>,
+    pub fours: Option<u8>,
+    pub fives: Option<u8>,
+    pub sixes: Option<u8>,
+    pub one_pair: Option<u8>,
+    pub two_pairs: Option<u8>,
+    pub three_of_a_kind: Option<u8>,
+    pub four_of_a_kind: Option<u8>,
+    pub small_straight: Option<u8>,
+    pub large_straight: Option<u8>,
+    pub full_house: Option<u8>,
+    pub chance: Option<u8>,
+    pub yatzy: Option<u8>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct Game {
     dice: Dice,
     rerolls_left: u8,
@@ -278,6 +315,16 @@ pub struct Game {
     full_house: Option<u8>,
     chance: Option<u8>,
     yatzy: Option<u8>,
+}
+
+#[derive(Clone, Copy, Debug, thiserror::Error)]
+pub enum NewGameError {
+    #[error("invalid value for combo {0:?}")]
+    InvalidCombo(Combo),
+    #[error("invalid dice")]
+    InvalidDice(#[from] NewDiceError),
+    #[error("invalid number of rerolls left")]
+    InvalidRerollsLeft,
 }
 
 #[derive(Clone, Copy, Debug, thiserror::Error)]
@@ -335,6 +382,107 @@ impl Game {
             + self.fives.unwrap_or(0)
             + self.sixes.unwrap_or(0)
             >= 63
+    }
+
+    pub fn new(options: GameOptions) -> Result<Self, NewGameError> {
+        if options.rerolls_left > 2 {
+            return Err(NewGameError::InvalidRerollsLeft);
+        }
+        if let Some(ones) = options.ones {
+            if ![0, 1, 2, 3, 4, 5].contains(&ones) {
+                return Err(NewGameError::InvalidCombo(Combo::Ones));
+            }
+        }
+        if let Some(twos) = options.twos {
+            if ![0, 2, 4, 6, 8, 10].contains(&twos) {
+                return Err(NewGameError::InvalidCombo(Combo::Twos));
+            }
+        }
+        if let Some(threes) = options.threes {
+            if ![0, 3, 6, 9, 12, 15].contains(&threes) {
+                return Err(NewGameError::InvalidCombo(Combo::Threes));
+            }
+        }
+        if let Some(fours) = options.fours {
+            if ![0, 4, 8, 12, 16, 20].contains(&fours) {
+                return Err(NewGameError::InvalidCombo(Combo::Fours));
+            }
+        }
+        if let Some(fives) = options.fives {
+            if ![0, 5, 10, 15, 20, 25].contains(&fives) {
+                return Err(NewGameError::InvalidCombo(Combo::Fives));
+            }
+        }
+        if let Some(sixes) = options.sixes {
+            if ![0, 6, 12, 18, 24, 30].contains(&sixes) {
+                return Err(NewGameError::InvalidCombo(Combo::Sixes));
+            }
+        }
+        if let Some(one_pair) = options.one_pair {
+            if ![0, 2, 4, 6, 8, 10, 12].contains(&one_pair) {
+                return Err(NewGameError::InvalidCombo(Combo::OnePair));
+            }
+        }
+        if let Some(two_pairs) = options.two_pairs {
+            if ![0, 6, 8, 10, 12, 14, 16, 18, 20, 22].contains(&two_pairs) {
+                return Err(NewGameError::InvalidCombo(Combo::TwoPairs));
+            }
+        }
+        if let Some(three_of_a_kind) = options.three_of_a_kind {
+            if ![0, 3, 6, 9, 12, 15, 18].contains(&three_of_a_kind) {
+                return Err(NewGameError::InvalidCombo(Combo::ThreeOfAKind));
+            }
+        }
+        if let Some(four_of_a_kind) = options.four_of_a_kind {
+            if ![0, 4, 8, 12, 16, 20, 24].contains(&four_of_a_kind) {
+                return Err(NewGameError::InvalidCombo(Combo::FourOfAKind));
+            }
+        }
+        if let Some(small_straight) = options.small_straight {
+            if ![0, 15].contains(&small_straight) {
+                return Err(NewGameError::InvalidCombo(Combo::SmallStraight));
+            }
+        }
+        if let Some(large_straight) = options.large_straight {
+            if ![0, 20].contains(&large_straight) {
+                return Err(NewGameError::InvalidCombo(Combo::LargeStraight));
+            }
+        }
+        if let Some(full_house) = options.full_house {
+            if full_house != 0 && (!(7..=28).contains(&full_house) || full_house == 10 || full_house == 25) {
+                return Err(NewGameError::InvalidCombo(Combo::FullHouse));
+            }
+        }
+        if let Some(chance) = options.chance {
+            if chance != 0 && !(5..=30).contains(&chance) {
+                return Err(NewGameError::InvalidCombo(Combo::Chance));
+            }
+        }
+        if let Some(yatzy) = options.yatzy {
+            if ![0, 50].contains(&yatzy) {
+                return Err(NewGameError::InvalidCombo(Combo::Yatzy));
+            }
+        }
+
+        Ok(Self {
+            dice: Dice::new(options.dice)?,
+            rerolls_left: options.rerolls_left,
+            ones: options.ones,
+            twos: options.twos,
+            threes: options.threes,
+            fours: options.fours,
+            fives: options.fives,
+            sixes: options.sixes,
+            one_pair: options.one_pair,
+            two_pairs: options.two_pairs,
+            three_of_a_kind: options.three_of_a_kind,
+            four_of_a_kind: options.four_of_a_kind,
+            small_straight: options.small_straight,
+            large_straight: options.large_straight,
+            full_house: options.full_house,
+            chance: options.chance,
+            yatzy: options.yatzy,
+        })
     }
 
     pub fn new_random<R: Rng>(rng: &mut R) -> Self {
@@ -563,6 +711,18 @@ fn print_score_str(name: &'static str, score: &str) {
 }
 
 pub fn print_game(game: Game) {
+    print!("Dice:");
+    for die in *game.dice() {
+        print!(" {die}");
+    }
+    println!();
+    let rerolls_left = game.rerolls_left();
+    if rerolls_left == 1 {
+        println!("1 reroll left");
+    } else {
+        println!("{rerolls_left} rerolls left");
+    }
+
     let ones = game.combo(Combo::Ones);
     let twos = game.combo(Combo::Twos);
     let threes = game.combo(Combo::Threes);
@@ -577,18 +737,16 @@ pub fn print_game(game: Game) {
     print_score("Fives", fives);
     print_score("Sixes", sixes);
 
-    let bonus = if ones.unwrap_or(0)
+    let upper_section_total = ones.unwrap_or(0)
         + twos.unwrap_or(0)
         + threes.unwrap_or(0)
         + fours.unwrap_or(0)
         + fives.unwrap_or(0)
-        + sixes.unwrap_or(0)
-        >= 63
-    {
-        Some(50)
-    } else {
-        None
-    };
+        + sixes.unwrap_or(0);
+
+    print_score("Upper section", Some(upper_section_total));
+
+    let bonus = if upper_section_total >= 63 { Some(50) } else { None };
     print_score("Bonus", bonus);
 
     print_score("One pair", game.combo(Combo::OnePair));
@@ -601,17 +759,4 @@ pub fn print_game(game: Game) {
     print_score("Chance", game.combo(Combo::Chance));
     print_score("Yatzy", game.combo(Combo::Yatzy));
     print_score_str("Total", &game.score().to_string());
-    println!();
-    print!("Dice:");
-    for die in *game.dice() {
-        print!(" {die}");
-    }
-    println!();
-    let rerolls_left = game.rerolls_left();
-    if rerolls_left == 1 {
-        println!("1 reroll left");
-    } else {
-        println!("{rerolls_left} rerolls left");
-    }
-    println!();
 }

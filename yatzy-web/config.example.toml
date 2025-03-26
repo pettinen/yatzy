@@ -1,0 +1,7 @@
+expected_values_path = "./expected-values"
+
+# Configure either a TCP or Unix socket listener
+tcp_listen_address = "127.0.0.1"
+tcp_listen_port = 3000
+
+unix_socket_path = "/run/yatzy/socket"
