@@ -449,7 +449,9 @@ impl Game {
             }
         }
         if let Some(full_house) = options.full_house {
-            if full_house != 0 && (!(7..=28).contains(&full_house) || full_house == 10 || full_house == 25) {
+            if full_house != 0
+                && (!(7..=28).contains(&full_house) || full_house == 10 || full_house == 25)
+            {
                 return Err(NewGameError::InvalidCombo(Combo::FullHouse));
             }
         }
@@ -746,7 +748,11 @@ pub fn print_game(game: Game) {
 
     print_score("Upper section", Some(upper_section_total));
 
-    let bonus = if upper_section_total >= 63 { Some(50) } else { None };
+    let bonus = if upper_section_total >= 63 {
+        Some(50)
+    } else {
+        None
+    };
     print_score("Bonus", bonus);
 
     print_score("One pair", game.combo(Combo::OnePair));

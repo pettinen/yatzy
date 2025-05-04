@@ -1,21 +1,32 @@
 use std::{net::IpAddr, path::PathBuf};
 
-use axum::{Json, Router, extract::RawQuery, http::header::ACCESS_CONTROL_ALLOW_ORIGIN, response::{AppendHeaders, IntoResponse}, routing::get};
+use axum::{
+    Json, Router,
+    extract::RawQuery,
+    http::header::ACCESS_CONTROL_ALLOW_ORIGIN,
+    response::{AppendHeaders, IntoResponse},
+    routing::get,
+};
 use clap::Parser;
 use lazy_static::lazy_static;
 use num_bigint::BigUint;
 use num_rational::Ratio;
 use pct_str::PctStr;
 use regex::Regex;
+use rustc_hash::FxBuildHasher;
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
 use tokio::net::{TcpListener, UnixListener};
 use yatzy::{Combo, Game, GameOptions};
-use yatzy_solver::{Choice, GameState, best_choice_0_rerolls, best_choice_1_reroll, best_choice_2_rerolls};
+use yatzy_solver::{
+    Choice, GameState, best_choice_0_rerolls, best_choice_1_reroll, best_choice_2_rerolls,
+};
 
 lazy_static! {
-    static ref DICE_REGEX: Regex = Regex::new(r"^[1-6],[1-6],[1-6],[1-6],[1-6]$").expect("invalid regex");
-    static ref EXPECTED_VALUES: papaya::HashMap<GameState, Ratio<BigUint>> = papaya::HashMap::new();
+    static ref DICE_REGEX: Regex =
+        Regex::new(r"^[1-6],[1-6],[1-6],[1-6],[1-6]$").expect("invalid regex");
+    static ref EXPECTED_VALUES: papaya::HashMap<GameState, Ratio<BigUint>, FxBuildHasher> =
+        papaya::HashMap::with_capacity_and_hasher(958_974, FxBuildHasher);
 }
 
 #[derive(Clone, Debug, Parser)]
@@ -61,7 +72,11 @@ impl TryFrom<ConfigInput> for Config {
     type Error = ConfigError;
 
     fn try_from(value: ConfigInput) -> Result<Self, Self::Error> {
-        let socket = match (value.unix_socket_path, value.tcp_listen_address, value.tcp_listen_port) {
+        let socket = match (
+            value.unix_socket_path,
+            value.tcp_listen_address,
+            value.tcp_listen_port,
+        ) {
             (None, None, None) => {
                 return Err(ConfigError::NoListener);
             }
@@ -110,19 +125,28 @@ async fn main() {
         }
     };
 
-    let expected_values: std::collections::HashMap<GameState, Ratio<BigUint>> = match std::fs::read(&config.expected_values_path) {
-        Ok(bytes) => match postcard::from_bytes(&bytes) {
-            Ok(map) => map,
+    let expected_values: std::collections::HashMap<GameState, Ratio<BigUint>> =
+        match std::fs::read(&config.expected_values_path) {
+            Ok(bytes) => match postcard::from_bytes(&bytes) {
+                Ok(map) => map,
+                Err(error) => {
+                    eprintln!(
+                        "failed to parse `{}`: {}",
+                        config.expected_values_path.display(),
+                        error
+                    );
+                    std::process::exit(3);
+                }
+            },
             Err(error) => {
-                eprintln!("failed to parse `{}`: {}", config.expected_values_path.display(), error);
+                eprintln!(
+                    "failed to read `{}`: {}",
+                    config.expected_values_path.display(),
+                    error
+                );
                 std::process::exit(3);
             }
-        }
-        Err(error) => {
-            eprintln!("failed to read `{}`: {}", config.expected_values_path.display(), error);
-            std::process::exit(3);
-        }
-    };
+        };
 
     let expected_values_static = EXPECTED_VALUES.pin();
     for (state, value) in expected_values {
@@ -229,10 +253,14 @@ fn parse_index_query_string(query: &str) -> Result<Game, Vec<ParseIndexQueryStri
     for key_value in query.split('&') {
         let Some((key, value)) = key_value.split_once('=') else {
             if keys.contains(&key_value) {
-                errors.push(ParseIndexQueryStringError::MissingValue(String::from(key_value)));
+                errors.push(ParseIndexQueryStringError::MissingValue(String::from(
+                    key_value,
+                )));
             } else {
                 if key_value != "" || query != "" {
-                    errors.push(ParseIndexQueryStringError::UnknownParameter(String::from(key_value)));
+                    errors.push(ParseIndexQueryStringError::UnknownParameter(String::from(
+                        key_value,
+                    )));
                 }
             }
             continue;
@@ -240,7 +268,9 @@ fn parse_index_query_string(query: &str) -> Result<Game, Vec<ParseIndexQueryStri
         match key {
             "dice" => {
                 if dice.is_some() {
-                    errors.push(ParseIndexQueryStringError::DuplicateParameter(String::from(key)));
+                    errors.push(ParseIndexQueryStringError::DuplicateParameter(
+                        String::from(key),
+                    ));
                     continue;
                 }
                 if value.is_empty() {
@@ -252,19 +282,26 @@ fn parse_index_query_string(query: &str) -> Result<Game, Vec<ParseIndexQueryStri
                     errors.push(ParseIndexQueryStringError::InvalidValue(String::from(key)));
                     continue;
                 }
-                dice = Some(Ok(value.split(',').map(|die_str| match die_str {
-                    "1" => 1,
-                    "2" => 2,
-                    "3" => 3,
-                    "4" => 4,
-                    "5" => 5,
-                    "6" => 6,
-                    _ => unreachable!(),
-                }).collect::<Vec<_>>().try_into().expect("expected five dice")));
+                dice = Some(Ok(value
+                    .split(',')
+                    .map(|die_str| match die_str {
+                        "1" => 1,
+                        "2" => 2,
+                        "3" => 3,
+                        "4" => 4,
+                        "5" => 5,
+                        "6" => 6,
+                        _ => unreachable!(),
+                    })
+                    .collect::<Vec<_>>()
+                    .try_into()
+                    .expect("expected five dice")));
             }
             "rerolls_left" => {
                 if rerolls_left.is_some() {
-                    errors.push(ParseIndexQueryStringError::DuplicateParameter(String::from(key)));
+                    errors.push(ParseIndexQueryStringError::DuplicateParameter(
+                        String::from(key),
+                    ));
                     continue;
                 }
                 rerolls_left = match value {
@@ -283,7 +320,9 @@ fn parse_index_query_string(query: &str) -> Result<Game, Vec<ParseIndexQueryStri
             }
             "ones" => {
                 if ones.is_some() {
-                    errors.push(ParseIndexQueryStringError::DuplicateParameter(String::from(key)));
+                    errors.push(ParseIndexQueryStringError::DuplicateParameter(
+                        String::from(key),
+                    ));
                     continue;
                 }
                 ones = match value {
@@ -306,7 +345,9 @@ fn parse_index_query_string(query: &str) -> Result<Game, Vec<ParseIndexQueryStri
             }
             "twos" => {
                 if twos.is_some() {
-                    errors.push(ParseIndexQueryStringError::DuplicateParameter(String::from(key)));
+                    errors.push(ParseIndexQueryStringError::DuplicateParameter(
+                        String::from(key),
+                    ));
                     continue;
                 }
                 twos = match value {
@@ -329,7 +370,9 @@ fn parse_index_query_string(query: &str) -> Result<Game, Vec<ParseIndexQueryStri
             }
             "threes" => {
                 if threes.is_some() {
-                    errors.push(ParseIndexQueryStringError::DuplicateParameter(String::from(key)));
+                    errors.push(ParseIndexQueryStringError::DuplicateParameter(
+                        String::from(key),
+                    ));
                     continue;
                 }
                 threes = match value {
@@ -352,7 +395,9 @@ fn parse_index_query_string(query: &str) -> Result<Game, Vec<ParseIndexQueryStri
             }
             "fours" => {
                 if fours.is_some() {
-                    errors.push(ParseIndexQueryStringError::DuplicateParameter(String::from(key)));
+                    errors.push(ParseIndexQueryStringError::DuplicateParameter(
+                        String::from(key),
+                    ));
                     continue;
                 }
                 fours = match value {
@@ -375,7 +420,9 @@ fn parse_index_query_string(query: &str) -> Result<Game, Vec<ParseIndexQueryStri
             }
             "fives" => {
                 if fives.is_some() {
-                    errors.push(ParseIndexQueryStringError::DuplicateParameter(String::from(key)));
+                    errors.push(ParseIndexQueryStringError::DuplicateParameter(
+                        String::from(key),
+                    ));
                     continue;
                 }
                 fives = match value {
@@ -398,7 +445,9 @@ fn parse_index_query_string(query: &str) -> Result<Game, Vec<ParseIndexQueryStri
             }
             "sixes" => {
                 if sixes.is_some() {
-                    errors.push(ParseIndexQueryStringError::DuplicateParameter(String::from(key)));
+                    errors.push(ParseIndexQueryStringError::DuplicateParameter(
+                        String::from(key),
+                    ));
                     continue;
                 }
                 sixes = match value {
@@ -421,7 +470,9 @@ fn parse_index_query_string(query: &str) -> Result<Game, Vec<ParseIndexQueryStri
             }
             "one_pair" => {
                 if one_pair.is_some() {
-                    errors.push(ParseIndexQueryStringError::DuplicateParameter(String::from(key)));
+                    errors.push(ParseIndexQueryStringError::DuplicateParameter(
+                        String::from(key),
+                    ));
                     continue;
                 }
                 one_pair = match value {
@@ -445,7 +496,9 @@ fn parse_index_query_string(query: &str) -> Result<Game, Vec<ParseIndexQueryStri
             }
             "two_pairs" => {
                 if two_pairs.is_some() {
-                    errors.push(ParseIndexQueryStringError::DuplicateParameter(String::from(key)));
+                    errors.push(ParseIndexQueryStringError::DuplicateParameter(
+                        String::from(key),
+                    ));
                     continue;
                 }
                 two_pairs = match value {
@@ -472,7 +525,9 @@ fn parse_index_query_string(query: &str) -> Result<Game, Vec<ParseIndexQueryStri
             }
             "three_of_a_kind" => {
                 if three_of_a_kind.is_some() {
-                    errors.push(ParseIndexQueryStringError::DuplicateParameter(String::from(key)));
+                    errors.push(ParseIndexQueryStringError::DuplicateParameter(
+                        String::from(key),
+                    ));
                     continue;
                 }
                 three_of_a_kind = match value {
@@ -496,7 +551,9 @@ fn parse_index_query_string(query: &str) -> Result<Game, Vec<ParseIndexQueryStri
             }
             "four_of_a_kind" => {
                 if four_of_a_kind.is_some() {
-                    errors.push(ParseIndexQueryStringError::DuplicateParameter(String::from(key)));
+                    errors.push(ParseIndexQueryStringError::DuplicateParameter(
+                        String::from(key),
+                    ));
                     continue;
                 }
                 four_of_a_kind = match value {
@@ -520,7 +577,9 @@ fn parse_index_query_string(query: &str) -> Result<Game, Vec<ParseIndexQueryStri
             }
             "small_straight" => {
                 if small_straight.is_some() {
-                    errors.push(ParseIndexQueryStringError::DuplicateParameter(String::from(key)));
+                    errors.push(ParseIndexQueryStringError::DuplicateParameter(
+                        String::from(key),
+                    ));
                     continue;
                 }
                 small_straight = match value {
@@ -539,7 +598,9 @@ fn parse_index_query_string(query: &str) -> Result<Game, Vec<ParseIndexQueryStri
             }
             "large_straight" => {
                 if large_straight.is_some() {
-                    errors.push(ParseIndexQueryStringError::DuplicateParameter(String::from(key)));
+                    errors.push(ParseIndexQueryStringError::DuplicateParameter(
+                        String::from(key),
+                    ));
                     continue;
                 }
                 large_straight = match value {
@@ -558,7 +619,9 @@ fn parse_index_query_string(query: &str) -> Result<Game, Vec<ParseIndexQueryStri
             }
             "full_house" => {
                 if full_house.is_some() {
-                    errors.push(ParseIndexQueryStringError::DuplicateParameter(String::from(key)));
+                    errors.push(ParseIndexQueryStringError::DuplicateParameter(
+                        String::from(key),
+                    ));
                     continue;
                 }
                 full_house = match value {
@@ -596,7 +659,9 @@ fn parse_index_query_string(query: &str) -> Result<Game, Vec<ParseIndexQueryStri
             }
             "chance" => {
                 if chance.is_some() {
-                    errors.push(ParseIndexQueryStringError::DuplicateParameter(String::from(key)));
+                    errors.push(ParseIndexQueryStringError::DuplicateParameter(
+                        String::from(key),
+                    ));
                     continue;
                 }
                 chance = match value {
@@ -640,7 +705,9 @@ fn parse_index_query_string(query: &str) -> Result<Game, Vec<ParseIndexQueryStri
             }
             "yatzy" => {
                 if yatzy.is_some() {
-                    errors.push(ParseIndexQueryStringError::DuplicateParameter(String::from(key)));
+                    errors.push(ParseIndexQueryStringError::DuplicateParameter(
+                        String::from(key),
+                    ));
                     continue;
                 }
                 yatzy = match value {
@@ -658,61 +725,97 @@ fn parse_index_query_string(query: &str) -> Result<Game, Vec<ParseIndexQueryStri
                 };
             }
             key => {
-                errors.push(ParseIndexQueryStringError::UnknownParameter(String::from(key)));
+                errors.push(ParseIndexQueryStringError::UnknownParameter(String::from(
+                    key,
+                )));
             }
         }
     }
 
     if dice.is_none() {
-        errors.push(ParseIndexQueryStringError::MissingValue(String::from("dice")));
+        errors.push(ParseIndexQueryStringError::MissingValue(String::from(
+            "dice",
+        )));
     }
     if rerolls_left.is_none() {
-        errors.push(ParseIndexQueryStringError::MissingValue(String::from("rerolls_left")));
+        errors.push(ParseIndexQueryStringError::MissingValue(String::from(
+            "rerolls_left",
+        )));
     }
     if ones.is_none() {
-        errors.push(ParseIndexQueryStringError::MissingValue(String::from("ones")));
+        errors.push(ParseIndexQueryStringError::MissingValue(String::from(
+            "ones",
+        )));
     }
     if twos.is_none() {
-        errors.push(ParseIndexQueryStringError::MissingValue(String::from("twos")));
+        errors.push(ParseIndexQueryStringError::MissingValue(String::from(
+            "twos",
+        )));
     }
     if threes.is_none() {
-        errors.push(ParseIndexQueryStringError::MissingValue(String::from("threes")));
+        errors.push(ParseIndexQueryStringError::MissingValue(String::from(
+            "threes",
+        )));
     }
     if fours.is_none() {
-        errors.push(ParseIndexQueryStringError::MissingValue(String::from("fours")));
+        errors.push(ParseIndexQueryStringError::MissingValue(String::from(
+            "fours",
+        )));
     }
     if fives.is_none() {
-        errors.push(ParseIndexQueryStringError::MissingValue(String::from("fives")));
+        errors.push(ParseIndexQueryStringError::MissingValue(String::from(
+            "fives",
+        )));
     }
     if sixes.is_none() {
-        errors.push(ParseIndexQueryStringError::MissingValue(String::from("sixes")));
+        errors.push(ParseIndexQueryStringError::MissingValue(String::from(
+            "sixes",
+        )));
     }
     if one_pair.is_none() {
-        errors.push(ParseIndexQueryStringError::MissingValue(String::from("one_pair")));
+        errors.push(ParseIndexQueryStringError::MissingValue(String::from(
+            "one_pair",
+        )));
     }
     if two_pairs.is_none() {
-        errors.push(ParseIndexQueryStringError::MissingValue(String::from("two_pairs")));
+        errors.push(ParseIndexQueryStringError::MissingValue(String::from(
+            "two_pairs",
+        )));
     }
     if three_of_a_kind.is_none() {
-        errors.push(ParseIndexQueryStringError::MissingValue(String::from("three_of_a_kind")));
+        errors.push(ParseIndexQueryStringError::MissingValue(String::from(
+            "three_of_a_kind",
+        )));
     }
     if four_of_a_kind.is_none() {
-        errors.push(ParseIndexQueryStringError::MissingValue(String::from("four_of_a_kind")));
+        errors.push(ParseIndexQueryStringError::MissingValue(String::from(
+            "four_of_a_kind",
+        )));
     }
     if small_straight.is_none() {
-        errors.push(ParseIndexQueryStringError::MissingValue(String::from("small_straight")));
+        errors.push(ParseIndexQueryStringError::MissingValue(String::from(
+            "small_straight",
+        )));
     }
     if large_straight.is_none() {
-        errors.push(ParseIndexQueryStringError::MissingValue(String::from("large_straight")));
+        errors.push(ParseIndexQueryStringError::MissingValue(String::from(
+            "large_straight",
+        )));
     }
     if full_house.is_none() {
-        errors.push(ParseIndexQueryStringError::MissingValue(String::from("full_house")));
+        errors.push(ParseIndexQueryStringError::MissingValue(String::from(
+            "full_house",
+        )));
     }
     if chance.is_none() {
-        errors.push(ParseIndexQueryStringError::MissingValue(String::from("chance")));
+        errors.push(ParseIndexQueryStringError::MissingValue(String::from(
+            "chance",
+        )));
     }
     if yatzy.is_none() {
-        errors.push(ParseIndexQueryStringError::MissingValue(String::from("yatzy")));
+        errors.push(ParseIndexQueryStringError::MissingValue(String::from(
+            "yatzy",
+        )));
     }
 
     if !errors.is_empty() {
@@ -725,27 +828,58 @@ fn parse_index_query_string(query: &str) -> Result<Game, Vec<ParseIndexQueryStri
         return Err(unique_errors);
     }
 
-    let game = Game::new(
-        GameOptions {
-            dice: dice.expect("missing `dice`").expect("invalid `dice`"),
-            rerolls_left: rerolls_left.expect("missing `rerolls_left`").expect("invalid `rerolls_left`"),
-            ones: ones.expect("missing combo `ones`").expect("invalid combo `ones`"),
-            twos: twos.expect("missing combo `twos`").expect("invalid combo `twos`"),
-            threes: threes.expect("missing combo `threes`").expect("invalid combo `threes`"),
-            fours: fours.expect("missing combo `fours`").expect("invalid combo `fours`"),
-            fives: fives.expect("missing combo `fives`").expect("invalid combo `fives`"),
-            sixes: sixes.expect("missing combo `sixes`").expect("invalid combo `sixes`"),
-            one_pair: one_pair.expect("missing combo `one_pair`").expect("invalid combo `one_pair`"),
-            two_pairs: two_pairs.expect("missing combo `two_pairs`").expect("invalid combo `two_pairs`"),
-            three_of_a_kind: three_of_a_kind.expect("missing combo `three_of_a_kind`").expect("invalid combo `three_of_a_kind`"),
-            four_of_a_kind: four_of_a_kind.expect("missing combo `four_of_a_kind`").expect("invalid combo `four_of_a_kind`"),
-            small_straight: small_straight.expect("missing combo `small_straight`").expect("invalid combo `small_straight`"),
-            large_straight: large_straight.expect("missing combo `large_straight`").expect("invalid combo `large_straight`"),
-            full_house: full_house.expect("missing combo `full_house`").expect("invalid combo `full_house`"),
-            chance: chance.expect("missing combo `chance`").expect("invalid combo `chance`"),
-            yatzy: yatzy.expect("missing combo `yatzy`").expect("invalid combo `yatzy`"),
-        },
-    ).expect("invalid game");
+    let game = Game::new(GameOptions {
+        dice: dice.expect("missing `dice`").expect("invalid `dice`"),
+        rerolls_left: rerolls_left
+            .expect("missing `rerolls_left`")
+            .expect("invalid `rerolls_left`"),
+        ones: ones
+            .expect("missing combo `ones`")
+            .expect("invalid combo `ones`"),
+        twos: twos
+            .expect("missing combo `twos`")
+            .expect("invalid combo `twos`"),
+        threes: threes
+            .expect("missing combo `threes`")
+            .expect("invalid combo `threes`"),
+        fours: fours
+            .expect("missing combo `fours`")
+            .expect("invalid combo `fours`"),
+        fives: fives
+            .expect("missing combo `fives`")
+            .expect("invalid combo `fives`"),
+        sixes: sixes
+            .expect("missing combo `sixes`")
+            .expect("invalid combo `sixes`"),
+        one_pair: one_pair
+            .expect("missing combo `one_pair`")
+            .expect("invalid combo `one_pair`"),
+        two_pairs: two_pairs
+            .expect("missing combo `two_pairs`")
+            .expect("invalid combo `two_pairs`"),
+        three_of_a_kind: three_of_a_kind
+            .expect("missing combo `three_of_a_kind`")
+            .expect("invalid combo `three_of_a_kind`"),
+        four_of_a_kind: four_of_a_kind
+            .expect("missing combo `four_of_a_kind`")
+            .expect("invalid combo `four_of_a_kind`"),
+        small_straight: small_straight
+            .expect("missing combo `small_straight`")
+            .expect("invalid combo `small_straight`"),
+        large_straight: large_straight
+            .expect("missing combo `large_straight`")
+            .expect("invalid combo `large_straight`"),
+        full_house: full_house
+            .expect("missing combo `full_house`")
+            .expect("invalid combo `full_house`"),
+        chance: chance
+            .expect("missing combo `chance`")
+            .expect("invalid combo `chance`"),
+        yatzy: yatzy
+            .expect("missing combo `yatzy`")
+            .expect("invalid combo `yatzy`"),
+    })
+    .expect("invalid game");
     Ok(game)
 }
 
@@ -761,85 +895,96 @@ async fn index(RawQuery(query): RawQuery) -> impl IntoResponse {
             rv.insert(
                 String::from("errors"),
                 Value::Array(
-                    errors.into_iter().map(|error| error.to_string().into()).collect(),
+                    errors
+                        .into_iter()
+                        .map(|error| error.to_string().into())
+                        .collect(),
                 ),
             );
             return (
-                AppendHeaders([
-                    (ACCESS_CONTROL_ALLOW_ORIGIN, "*"),
-                ]),
+                AppendHeaders([(ACCESS_CONTROL_ALLOW_ORIGIN, "*")]),
                 Json(rv.into()),
             );
         }
     };
     if game.ended() {
         return (
-            AppendHeaders([
-                (ACCESS_CONTROL_ALLOW_ORIGIN, "*"),
-            ]),
+            AppendHeaders([(ACCESS_CONTROL_ALLOW_ORIGIN, "*")]),
             Json(json!({ "errors": ["game has ended"] })),
         );
     }
 
-    let cache = papaya::HashMap::new();
-    let (best_choice, _) = match game.rerolls_left() {
-        0 => best_choice_0_rerolls(game, &EXPECTED_VALUES, &cache),
-        1 => best_choice_1_reroll(game, &EXPECTED_VALUES, &cache),
-        2 => best_choice_2_rerolls(game, &EXPECTED_VALUES, &cache),
+    let cache = papaya::HashMap::with_hasher(FxBuildHasher);
+    let (choices, _) = match game.rerolls_left() {
+        0 => best_choice_0_rerolls::<_, FxBuildHasher, _, Ratio<BigUint>>(
+            game,
+            &EXPECTED_VALUES,
+            &cache,
+        ),
+        1 => best_choice_1_reroll::<_, FxBuildHasher, _, Ratio<BigUint>>(
+            game,
+            &EXPECTED_VALUES,
+            &cache,
+        ),
+        2 => best_choice_2_rerolls::<_, FxBuildHasher, _, Ratio<BigUint>>(
+            game,
+            &EXPECTED_VALUES,
+            &cache,
+        ),
         _ => unreachable!(),
     };
 
-    let rv = Json(
-    match best_choice {
-        Choice::SelectCombo(combo) => {
-            let combo_str = match combo {
-                Combo::Ones => "ones",
-                Combo::Twos => "twos",
-                Combo::Threes => "threes",
-                Combo::Fours => "fours",
-                Combo::Fives => "fives",
-                Combo::Sixes => "sixes",
-                Combo::OnePair => "one_pair",
-                Combo::TwoPairs => "two_pairs",
-                Combo::ThreeOfAKind => "three_of_a_kind",
-                Combo::FourOfAKind => "four_of_a_kind",
-                Combo::SmallStraight => "small_straight",
-                Combo::LargeStraight => "large_straight",
-                Combo::FullHouse => "full_house",
-                Combo::Chance => "chance",
-                Combo::Yatzy => "yatzy",
-            };
-            json!({
-                "choice": "select_combo",
-                "combo": combo_str,
-            })
-        }
-        Choice::Reroll1(dice) => json!({
-            "choice": "reroll",
-            "dice": dice,
-        }),
-        Choice::Reroll2(dice) => json!({
-            "choice": "reroll",
-            "dice": dice,
-        }),
-        Choice::Reroll3(dice) => json!({
-            "choice": "reroll",
-            "dice": dice,
-        }),
-        Choice::Reroll4(dice) => json!({
-            "choice": "reroll",
-            "dice": dice,
-        }),
-        Choice::Reroll5(dice) => json!({
-            "choice": "reroll",
-            "dice": dice,
-        }),
-    });
+    let choices_json = choices
+        .into_iter()
+        .map(|choice| match choice {
+            Choice::SelectCombo(combo) => {
+                let combo_str = match combo {
+                    Combo::Ones => "ones",
+                    Combo::Twos => "twos",
+                    Combo::Threes => "threes",
+                    Combo::Fours => "fours",
+                    Combo::Fives => "fives",
+                    Combo::Sixes => "sixes",
+                    Combo::OnePair => "one_pair",
+                    Combo::TwoPairs => "two_pairs",
+                    Combo::ThreeOfAKind => "three_of_a_kind",
+                    Combo::FourOfAKind => "four_of_a_kind",
+                    Combo::SmallStraight => "small_straight",
+                    Combo::LargeStraight => "large_straight",
+                    Combo::FullHouse => "full_house",
+                    Combo::Chance => "chance",
+                    Combo::Yatzy => "yatzy",
+                };
+                json!({
+                    "choice": "select_combo",
+                    "combo": combo_str,
+                })
+            }
+            Choice::Reroll1(dice) => json!({
+                "choice": "reroll",
+                "dice": dice,
+            }),
+            Choice::Reroll2(dice) => json!({
+                "choice": "reroll",
+                "dice": dice,
+            }),
+            Choice::Reroll3(dice) => json!({
+                "choice": "reroll",
+                "dice": dice,
+            }),
+            Choice::Reroll4(dice) => json!({
+                "choice": "reroll",
+                "dice": dice,
+            }),
+            Choice::Reroll5(dice) => json!({
+                "choice": "reroll",
+                "dice": dice,
+            }),
+        })
+        .collect::<Vec<_>>();
 
     (
-        AppendHeaders([
-            (ACCESS_CONTROL_ALLOW_ORIGIN, "*"),
-        ]),
-        rv,
+        AppendHeaders([(ACCESS_CONTROL_ALLOW_ORIGIN, "*")]),
+        Json(json!(choices_json)),
     )
 }

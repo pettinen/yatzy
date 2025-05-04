@@ -19,6 +19,7 @@ use yatzy_compute_expected_values::{
 
 fn main() {
     let states = game_states_by_empty_field_count();
+
     let mut expected_values = match std::fs::read("checkpoint") {
         Ok(bytes) => postcard::from_bytes(&bytes).unwrap(),
         Err(error) => {
@@ -27,35 +28,37 @@ fn main() {
         }
     };
 
+    let first_computation: HashMap<GameState, Ratio<BigUint>> =
+        postcard::from_bytes(&std::fs::read("expected-values").unwrap()).unwrap();
+
     if !expected_values.is_empty() {
         eprintln!("loaded checkpoint with {} states", expected_values.len());
+    }
 
-        let initial_state = GameState {
-            numbers_total: 0,
-            ones: FieldState::Empty,
-            twos: FieldState::Empty,
-            threes: FieldState::Empty,
-            fours: FieldState::Empty,
-            fives: FieldState::Empty,
-            sixes: FieldState::Empty,
-            one_pair: FieldState::Empty,
-            two_pairs: FieldState::Empty,
-            three_of_a_kind: FieldState::Empty,
-            four_of_a_kind: FieldState::Empty,
-            small_straight: FieldState::Empty,
-            large_straight: FieldState::Empty,
-            full_house: FieldState::Empty,
-            chance: FieldState::Empty,
-            yatzy: FieldState::Empty,
-        };
-        if let Some(value) = expected_values.get(&initial_state) {
-            eprintln!("expected value for the entire game: {value}");
-        }
+    let initial_state = GameState {
+        numbers_total: 0,
+        ones: FieldState::Empty,
+        twos: FieldState::Empty,
+        threes: FieldState::Empty,
+        fours: FieldState::Empty,
+        fives: FieldState::Empty,
+        sixes: FieldState::Empty,
+        one_pair: FieldState::Empty,
+        two_pairs: FieldState::Empty,
+        three_of_a_kind: FieldState::Empty,
+        four_of_a_kind: FieldState::Empty,
+        small_straight: FieldState::Empty,
+        large_straight: FieldState::Empty,
+        full_house: FieldState::Empty,
+        chance: FieldState::Empty,
+        yatzy: FieldState::Empty,
+    };
+    if let Some(value) = first_computation.get(&initial_state) {
+        eprintln!("expected value for the entire game: {value}");
     }
 
     let mut total_states = 0;
     for n in 1..=15 {
-        if n > 2 { break; }
         let state_count = states.get(&n).unwrap().len();
         total_states += state_count;
         eprintln!(
@@ -70,7 +73,13 @@ fn main() {
             } else {
                 eprint!("\n");
             }
+
+            for (k, v) in &new_values {
+                assert!(v == first_computation.get(&k).unwrap());
+            }
+
             expected_values.extend(new_values);
+
             continue;
             let bytes = postcard::to_allocvec(&expected_values).unwrap();
             let filename = format!("checkpoint-{}", Utc::now().format("%Y%m%dT%H%M%SZ"));

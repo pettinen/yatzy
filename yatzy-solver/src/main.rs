@@ -3,54 +3,47 @@ use std::collections::HashMap;
 use lazy_static::lazy_static;
 use num_bigint::BigUint;
 use num_rational::Ratio;
+use num_traits::ToPrimitive as _;
+use rustc_hash::FxBuildHasher;
 use yatzy::{Combo, Game, print_game};
 use yatzy_compute_expected_values::{Choice, GameState};
 
 use yatzy_solver::{best_choice_0_rerolls, best_choice_1_reroll, best_choice_2_rerolls};
 
 lazy_static! {
-    static ref EXPECTED_VALUES: papaya::HashMap<GameState, Ratio<BigUint>> =
-        papaya::HashMap::with_capacity(958_974);
+    static ref EXPECTED_VALUES: papaya::HashMap<GameState, f64, FxBuildHasher> =
+        papaya::HashMap::with_capacity_and_hasher(958_974, FxBuildHasher);
 }
 
 fn main() {
     let expected_values = EXPECTED_VALUES.pin();
 
-    /* TODO uncomment once precomputation finishes
-    let map: HashMap<GameState, Ratio<BigUint>> = match std::fs::read("expected-values") {
-        Ok(bytes) => match postcard::from_bytes(&bytes) {
-            Ok(map) => map,
+    let map: HashMap<GameState, Ratio<BigUint>, FxBuildHasher> =
+        match std::fs::read("expected-values") {
+            Ok(bytes) => match postcard::from_bytes(&bytes) {
+                Ok(map) => map,
+                Err(error) => {
+                    eprintln!("failed to read `expected-values`: {error}");
+                    std::process::exit(1);
+                }
+            },
             Err(error) => {
-                eprintln!("failed to read `expected-values`: {error}");
+                eprintln!("failed to open `expected-values`: {error}");
                 std::process::exit(1);
             }
-        },
-        Err(error) => {
-            eprintln!("failed to open `expected-values`: {error}");
-            std::process::exit(1);
-        }
-    };
+        };
 
     for (k, v) in map {
-        expected_values.insert(k, v);
-    }
-    */
-
-    // TODO remove
-    let partial: HashMap<GameState, Ratio<BigUint>> =
-        postcard::from_bytes(&std::fs::read("expected-values-partially-computed").unwrap())
-            .unwrap();
-    for (k, v) in partial {
-        expected_values.insert(k, v);
+        expected_values.insert(k, v.to_f64().unwrap());
     }
 
-    let mut total = 0_u32;
-    let n = 1000;
+    let mut total = 0_u64;
+    let n = 10_000;
     for i in 1..=n {
         let score = benchmark(false);
-        total += u32::from(score);
+        total += u64::from(score);
         if i % 100 == 0 {
-            println!("average: {} (N={})", f64::from(total) / f64::from(i), i);
+            println!("average: {} (N={})", (total as f64) / f64::from(i), i);
         }
     }
 
@@ -66,14 +59,15 @@ fn benchmark(print: bool) -> u16 {
     }
 
     while !game.ended() {
-        let cache = papaya::HashMap::new();
+        let cache = papaya::HashMap::with_hasher(FxBuildHasher);
 
-        let (choice, _) = match game.rerolls_left() {
-            0 => best_choice_0_rerolls(game, &EXPECTED_VALUES, &cache),
-            1 => best_choice_1_reroll(game, &EXPECTED_VALUES, &cache),
-            2 => best_choice_2_rerolls(game, &EXPECTED_VALUES, &cache),
+        let (choices, _) = match game.rerolls_left() {
+            0 => best_choice_0_rerolls::<_, FxBuildHasher, _, f64>(game, &EXPECTED_VALUES, &cache),
+            1 => best_choice_1_reroll::<_, FxBuildHasher, _, f64>(game, &EXPECTED_VALUES, &cache),
+            2 => best_choice_2_rerolls::<_, FxBuildHasher, _, f64>(game, &EXPECTED_VALUES, &cache),
             _ => unreachable!(),
         };
+        let choice = choices.into_iter().next().unwrap();
 
         if print {
             println!();
@@ -132,7 +126,10 @@ fn benchmark(print: bool) -> u16 {
             Choice::Reroll5(dice) => {
                 game.reroll(&dice, &mut rng).unwrap();
                 if print {
-                    println!("Rerolling {} {} {} {} {}", dice[0], dice[1], dice[2], dice[3], dice[4]);
+                    println!(
+                        "Rerolling {} {} {} {} {}",
+                        dice[0], dice[1], dice[2], dice[3], dice[4],
+                    );
                 }
             }
         }

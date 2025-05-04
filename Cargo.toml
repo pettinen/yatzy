@@ -1,5 +1,5 @@
 [workspace]
-members = ["yatzy", "yatzy-compute-expected-values", "yatzy-solver", "yatzy-web"]
+members = [ "yatzy", "yatzy-compute-expected-values", "yatzy-solver", "yatzy-web"]
 resolver = "3"
 
 [workspace.dependencies]
